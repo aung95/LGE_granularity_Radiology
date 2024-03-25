@@ -1,0 +1,2238 @@
+---
+title: "ICM_LGE_V9"
+author: "Alexandre Unger"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: TRUE
+    toc.depth : 2
+    code_folding : "hide"
+    keep_md: yes
+    fig_width: 7
+    fig_height: 6
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+# Set up a relative path for figures
+project_dir <- "outputs/figure_html" # Relative path from the project root
+fig_dir <- file.path(getwd(), project_dir) # Builds the path dynamically
+
+# Check if the directory exists, if not, create it
+if (!dir.exists(fig_dir)) {
+  dir.create(fig_dir, recursive = TRUE)
+}
+
+# Using this to force those parameters in all chunks
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  dev = "png",
+  dpi = 300,
+  fig.path = fig_dir # Use the dynamic path
+)
+```
+
+# Code preparation
+## Package installation.
+Classified by type of package
+```{r Packages}
+library(rmarkdown)             # Documentation generation
+library(officer)              # Manipulating Microsoft Word documents
+library(flextable)            # Creating formatted tables in Microsoft Word documents
+library(tableHTML)            # Creating tables in HTML format
+library(gtsummary)            # Creating summary tables
+library(here)                 # Dealing with file path
+
+# ---- dealing with data
+library(dplyr)                # Data manipulation and transformation
+library(tidyr)                # Data tidying
+library(DataExplorer)         # Exploratory data analysis
+library(compareGroups)        # Comparing groups
+library(psych)                # Psychological statistics and data manipulation
+library(Hmisc)                # Miscellaneous functions for data analysis
+
+# ---- Survival analysis
+library(poptrend)             # Calculating p-trend in survival analysis
+library(survival)             # Survival analysis
+library(survivalAnalysis)     # Survival analysis functions
+library(survminer)            # Drawing survival curves
+library(adjustedCurves)       # Plotting adjusted survival curves
+library(pammtools)            # Plotting adjusted survival curves
+library(survIDINRI)           # Make reclassification and discrimination 
+library(glmnet)               # Regularized regression models
+library(olsrr)                # Variable selection at its best !
+
+
+# ---- Graphics
+library(ggplot2)              # Data visualization
+library(mctest)               # Multiple hypothesis testing --> assess colinearity between continuous variable
+library(corrplot)             # Visualizing correlation matrices
+library(fmsb)                 # Creating radar plots
+library(concreg)              # Plotting adjusted survival curves
+library(ggpubr)               # Associating the risk table when plotting
+```
+
+## Data Download (RData).  
+Using the ICM_General/ICM_Data/data.management_ICM_V20231127.R results directly saved in RData. \n
+* df_all : 6082 patients \n
+* df_LGE : 3,591 patients
+```{r loading file}
+load(file = here("data","df_all.RData"))
+```
+
+## Check directory
+```{r check if file is good, message=T}
+# Expected directory name
+expected_path <- here("ICM_Granularity")
+
+# Get the current working directory
+current_path <- getwd()
+
+# Check if the current working directory ends with the expected directory name
+if (!grepl(expected_dir, current_path)) {
+  stop(paste("This script should be run from within the", expected_dir, "directory. Current directory is:", current_path))
+} else {
+  message("You are in the correct directory: ", expected_dir) # If the check passes, and the message confirms it, your script continues to execute normally
+}
+
+rm(current_path, expected_dir, expected_path)
+```
+
+## Creation of differents files
+```{r files, message = TRUE}
+# Check if the "tables" directory exists; create it if it doesn't
+tables_dir <- here("outputs", "tables")
+if (!dir.exists(tables_dir)) {
+  dir.create(tables_dir, recursive = TRUE)
+  message("Directory created: ", tables_dir)
+} else {
+  message("Directory already exists: ", tables_dir)
+}
+
+# Check if the "figures" directory exists; create it if it doesn't
+figures_dir <- here("outputs", "figures")
+if (!dir.exists(figures_dir)) {
+  dir.create(figures_dir, recursive = TRUE)
+  message("Directory created: ", figures_dir)
+} else {
+  message("Directory already exists: ", figures_dir)
+}
+
+rm(figures_dir, tables_dir)
+```
+
+# Data exploration - Analysis of colinearity and selection of variable {.tabset}
+```{r Corr for tradi analysis table}
+# Select specific columns for correlation analysis
+df_selected <- df_all %>%
+  mutate_if(is.factor, ~ as.numeric(.)) %>%
+  select(demo_NIP:CMR_LGE_ischemic_presence) %>%
+  select(-outcome_death, -outcome_FU_time_death, -CMR_LGE_presence_ischemic_or_midwall, -demo_NIP, -demo_center)
+
+# Calculate the correlation matrix and round the values
+correlation_matrix <- cor(df_selected)
+
+# Set the threshold for identifying highly correlated features
+threshold <- 0.7
+
+# Find highly correlated feature pairs
+correlation_pairs <- which(correlation_matrix > threshold & correlation_matrix < 1, arr.ind = TRUE)
+
+# Extract the names and correlation values of the most collinear features
+most_collinear_features <- data.frame(
+  Feature1 = rownames(correlation_matrix)[correlation_pairs[, 1]],
+  Feature2 = colnames(correlation_matrix)[correlation_pairs[, 2]],
+  Correlation_Value = correlation_matrix[correlation_pairs]
+)
+# Sort by correlation value in descending order
+most_collinear_features <- most_collinear_features[order(-most_collinear_features$Correlation_Value), ]
+print(most_collinear_features)
+
+# Create a color palette for the plot
+color_palette <- colorRampPalette(c("blue", "black", "red"))(50)
+
+# Create an attractive correlation plot
+correlation_matrix <- cor(df_selected[, unique(most_collinear_features$Feature1)])
+
+corrplot(correlation_matrix,
+         method = "number",   # Display correlation values
+         type = "upper",      # Display only the upper triangle
+         col = color_palette, # Set the color palette
+         tl.cex = 0.8,        # Adjust text label size
+         tl.col = "black",    # Set text label color
+         cl.ratio = 0.2,      # Adjust the space for the color legend
+         number.cex = 0.7,    # Adjust correlation value size
+         addCoef.col = "black" # Set coefficient color
+)
+
+correlation_matrix <- cor(df_selected)
+
+corrplot(correlation_matrix,
+         method = "color",
+         type = "full",
+         tl.col = "black",
+         addCoefasPercent = FALSE # Remove value display
+)
+```
+
+# Descriptive analysis
+##  Table 1.A: Presence or absence of LGE in all population (N=6082)
+Confidence level = 0.995.
+```{r descriptive table 1A presence LGE}
+# Create a summary table comparing different factors with the presence of LGE in a dataset.
+# parameters
+CI_choosen = 0.995
+dataset_used = df_all
+export_location <- here("outputs", "tables", "table_1.docx")
+
+# Modification of the dataset
+dataset_used <- dataset_used %>%
+  mutate(
+  demo_age_binary = case_when(demo_age > 65 ~ 1, TRUE ~ 0),
+  demo_age_binary = factor(
+    demo_age_binary,
+    levels = c(0, 1),
+    labels = c("age_<65", "age_≥65")
+    ),
+  CMR_LVEF40 = case_when(CMR_LVEF <= 40 ~ 1, TRUE ~ 0),
+  CMR_LVEF40 = factor(
+    CMR_LVEF40,
+    levels = c(0, 1),
+    labels = c("HFmrEF", "HFrEF")
+    ),
+  CMR_LVEF35 = case_when(CMR_LVEF <= 35 ~ 1, TRUE ~ 0),
+  CMR_LVEF35 = factor(
+    CMR_LVEF35,
+    levels = c(0, 1),
+    labels = c(">35", "≤35")
+    ),
+  CMR_LGE_Viable = case_when(
+    CMR_LGE_ischemic_transmurality == "B_Subendocardial<50%" ~ 1,
+    CMR_LGE_ischemic_transmurality == "C_Subendocardial≥50%" | CMR_LGE_ischemic_transmurality == "D_Transmural" ~ 2,
+    TRUE ~ 3),
+  CMR_LGE_Viable = factor(
+    CMR_LGE_Viable, levels = c(1,2,3), labels = c("Viable","NonViable","NoLGE")
+  ),
+  CMR_LGE_Viable_Revasc = case_when(
+    CMR_LGE_Viable == "Viable" & outcome_revascularisation_90days == "Yes" ~ 1,
+    CMR_LGE_Viable == "Viable" & outcome_revascularisation_90days == "No" ~ 2,
+    CMR_LGE_Viable == "NonViable" & outcome_revascularisation_90days == "Yes" ~ 3,
+    CMR_LGE_Viable == "NonViable" & outcome_revascularisation_90days == "No" ~ 4,
+    TRUE ~ 5),
+  CMR_LGE_Viable_Revasc = factor(
+    CMR_LGE_Viable_Revasc, levels = c(1,2,3,4,5), labels = c("Viable_Revasc","viable_NonRevasc","NonViable_Revasc","NonViable_NonRevasc","No_LGE")
+  )
+  )
+
+
+# The table
+table_descr = createTable(
+  compareGroups(
+    CMR_LGE_ischemic_presence ~ outcome_death + demo_age + demo_age_binary + demo_gender + demo_BMI + 
+    CV_risk_diabete + CV_risk_HTA + CV_risk_obesity + CV_risk_dyslipidemia + CV_risk_Smoking + 
+    history_med_MI + history_coronary_procedure + history_interv_PCI + history_interv_CABG + med_periph_atheroma + history_stroke + 
+    med_pacemaker + med_CKD + history_hospit_HF + history_AFib + clini_NYHA + clini_cardiac_rythm + 
+    CMR_LVEF + CMR_LVEF40 + CMR_LVEF35 + CMR_LVEDV + CMR_LVESV + CMR_LV_mass + CMR_RV_dysfunction +
+      CMR_LGE_presence_ischemic_or_midwall + CMR_LGE_presence_ischemic_and_midwall + 
+    CMR_LGE_ischemic_presence + CMR_LGE_midwall_presence + CMR_LGE_type + 
+    CMR_LGE_ischemic_extent_count + CMR_LGE_ischemic_extent_categ + 
+    CMR_LGE_ischemic_transmurality + CMR_LGE_ischemic_multiple + 
+    CMR_LGE_ischemic_Apical +
+    CMR_LGE_ischemic_inferior + CMR_LGE_ischemic_lateral +
+    CMR_LGE_ischemic_anterior + CMR_LGE_ischemic_septal +
+    CMR_LGE_ischemic_location_6 + CMR_LGE_ischemic_location_4 +
+    outcome_revascularisation_90days + CMR_LGE_Viable + CMR_LGE_Viable_Revasc,
+    
+    data = dataset_used, 
+    method = c(CMR_LVEF = 1, CMR_LVESV = 1, CMR_LV_mass = 1), #, CMR_LVEDV = 2
+    conf.level = CI_choosen
+  ),
+  hide = "No", show.all = TRUE, show.p.overall = TRUE
+)
+
+# Export the summary table to Markdown and Word formats.
+export2md(table_descr, strip = TRUE, first.strip = TRUE)
+
+export2word(
+  table_descr, export_location,
+  which.table = "descr", nmax = TRUE, header.labels = c(),
+  caption = NULL, strip = FALSE, first.strip = FALSE,
+  background = "#D2D2D2", size = NULL, header.background = NULL, 
+  header.color = NULL
+)
+```
+## Appendix table 2 Baseline clinical and CMR characteristics of patients stratified by center (N=6,082)
+```{r descriptive table 1B center}
+# parameters
+CI_choosen = 0.995
+dataset_used = df_all
+export_location <- here("outputs", "tables", "tableS2.docx")
+
+# Modification of the dataset
+dataset_used <- dataset_used %>%
+  mutate(
+  demo_age_binary = case_when(demo_age > 65 ~ 1, TRUE ~ 0),
+  demo_age_binary = factor(
+    demo_age_binary,
+    levels = c(0, 1),
+    labels = c("age_<65", "age_≥65")
+    ),
+  CMR_LVEF40 = case_when(CMR_LVEF <= 40 ~ 1, TRUE ~ 0),
+  CMR_LVEF40 = factor(
+    CMR_LVEF40,
+    levels = c(0, 1),
+    labels = c("HFmrEF", "HFrEF")
+    ),
+  CMR_LVEF35 = case_when(CMR_LVEF <= 35 ~ 1, TRUE ~ 0),
+  CMR_LVEF35 = factor(
+    CMR_LVEF35,
+    levels = c(0, 1),
+    labels = c(">35", "≤35")
+    )
+  )
+
+# Create a summary table comparing factors with 'Center' and death outcomes in a dataset.
+
+table_descr = createTable(
+  compareGroups(
+    demo_center ~ outcome_death + demo_age + demo_age_binary + demo_gender + demo_BMI + 
+    CV_risk_diabete + CV_risk_HTA + CV_risk_obesity + CV_risk_dyslipidemia + CV_risk_Smoking + 
+    history_med_MI +  history_coronary_procedure + history_interv_PCI + history_interv_CABG + med_periph_atheroma + history_stroke + 
+    med_pacemaker + med_CKD + history_hospit_HF + history_AFib + clini_NYHA + clini_cardiac_rythm + 
+    CMR_LVEF + CMR_LVEF40 + CMR_LVEF35 + CMR_LVEDV + CMR_LVESV + CMR_LV_mass + CMR_RV_dysfunction +
+    CMR_LGE_presence_ischemic_or_midwall + CMR_LGE_presence_ischemic_and_midwall + 
+    CMR_LGE_ischemic_presence + CMR_LGE_midwall_presence + CMR_LGE_type + 
+    CMR_LGE_ischemic_extent_count + CMR_LGE_ischemic_extent_categ + 
+    CMR_LGE_ischemic_transmurality + CMR_LGE_ischemic_multiple + 
+    CMR_LGE_ischemic_Apical +
+    CMR_LGE_ischemic_inferior + CMR_LGE_ischemic_lateral +
+    CMR_LGE_ischemic_anterior + CMR_LGE_ischemic_septal +
+    CMR_LGE_ischemic_location_6 + CMR_LGE_ischemic_location_4 +
+    outcome_revascularisation_90days,
+    data = dataset_used, 
+    method = c(outcome_death = 3, CMR_LVEF = 1, CMR_LVESV = 1, CMR_LV_mass = 1), #, CMR_LVEDV = 2
+    conf.level = CI_choosen
+  ),
+  hide = "No", show.all = TRUE, show.p.overall = TRUE
+)
+
+# Export the summary table to Markdown and Word formats.
+export2md(table_descr, strip = TRUE, first.strip = TRUE)
+# Export to word
+export2word(
+  table_descr, export_location,
+  which.table = "descr", nmax = TRUE, header.labels = c(),
+  caption = NULL, strip = FALSE, first.strip = FALSE,
+  background = "#D2D2D2", size = NULL, header.background = NULL, 
+  header.color = NULL
+)
+```
+
+# Outcome:  death
+## Appendix Table s3: Death in All patient (N=6082).
+Confidence level = 0.995.
+```{r descriptive table 2A}
+# parameters
+CI_choosen = 0.995
+dataset_used = df_all
+export_location <- here("outputs", "tables", "tableS3.docx")
+
+
+# Modification of the dataset
+dataset_used <- dataset_used %>%
+  mutate(
+  demo_age_binary = case_when(demo_age > 65 ~ 1, TRUE ~ 0),
+  demo_age_binary = factor(
+    demo_age_binary,
+    levels = c(0, 1),
+    labels = c("age_<65", "age_≥65")
+    ),
+  CMR_LVEF40 = case_when(CMR_LVEF <= 40 ~ 1, TRUE ~ 0),
+  CMR_LVEF40 = factor(
+    CMR_LVEF40,
+    levels = c(0, 1),
+    labels = c("HFmrEF", "HFrEF")
+    ),
+  CMR_LVEF35 = case_when(CMR_LVEF <= 35 ~ 1, TRUE ~ 0),
+  CMR_LVEF35 = factor(
+    CMR_LVEF35,
+    levels = c(0, 1),
+    labels = c(">35", "≤35")
+    ),
+  CMR_LGE_Viable = case_when(
+    CMR_LGE_ischemic_transmurality == "B_Subendocardial<50%" ~ 1,
+    CMR_LGE_ischemic_transmurality == "C_Subendocardial≥50%" | CMR_LGE_ischemic_transmurality == "D_Transmural" ~ 2,
+    TRUE ~ 3),
+  CMR_LGE_Viable = factor(
+    CMR_LGE_Viable, levels = c(1,2,3), labels = c("Viable","NonViable","NoLGE")
+  ),
+  CMR_LGE_Viable_Revasc = case_when(
+    CMR_LGE_Viable == "Viable" & outcome_revascularisation_90days == "Yes" ~ 1,
+    CMR_LGE_Viable == "Viable" & outcome_revascularisation_90days == "No" ~ 2,
+    CMR_LGE_Viable == "NonViable" & outcome_revascularisation_90days == "Yes" ~ 3,
+    CMR_LGE_Viable == "NonViable" & outcome_revascularisation_90days == "No" ~ 4,
+    TRUE ~ 5),
+  CMR_LGE_Viable_Revasc = factor(
+    CMR_LGE_Viable_Revasc, levels = c(1,2,3,4,5), labels = c("Viable_Revasc","viable_NonRevasc","NonViable_Revasc","NonViable_NonRevasc","No_LGE")
+  )
+  )
+
+# Create a summary table comparing factors with death outcomes in a dataset.
+
+table_descr = createTable(
+  compareGroups(
+    outcome_death ~ demo_age + demo_age_binary + demo_gender + demo_BMI + 
+    CV_risk_diabete + CV_risk_HTA + CV_risk_obesity + CV_risk_dyslipidemia + CV_risk_Smoking + 
+    history_med_MI +  history_coronary_procedure + history_interv_PCI + history_interv_CABG + med_periph_atheroma + history_stroke + 
+    med_pacemaker + med_CKD + history_hospit_HF + history_AFib + clini_NYHA + clini_cardiac_rythm + 
+    CMR_LVEF + CMR_LVEF40 + CMR_LVEF35 + CMR_LVEDV + CMR_LVESV + CMR_LV_mass + CMR_RV_dysfunction +
+    CMR_LGE_presence_ischemic_or_midwall + CMR_LGE_presence_ischemic_and_midwall + 
+    CMR_LGE_ischemic_presence + CMR_LGE_midwall_presence + CMR_LGE_type + 
+    CMR_LGE_ischemic_extent_count + CMR_LGE_ischemic_extent_categ + 
+    CMR_LGE_ischemic_transmurality + CMR_LGE_ischemic_multiple + 
+    CMR_LGE_ischemic_Apical +
+    CMR_LGE_ischemic_inferior + CMR_LGE_ischemic_lateral +
+    CMR_LGE_ischemic_anterior + CMR_LGE_ischemic_septal +
+    CMR_LGE_ischemic_location_6 + CMR_LGE_ischemic_location_4 +
+    outcome_revascularisation_90days + CMR_LGE_Viable + CMR_LGE_Viable_Revasc,
+    
+    data = dataset_used, 
+    method = c(CMR_LVEF = 2, CMR_LVEDV = 2, CMR_LVESV = 2, CMR_LV_mass = 2),
+    conf.level = CI_choosen
+  ),
+  hide = "No", show.all = TRUE, show.p.overall = TRUE
+)
+
+# Export the death outcomes summary table to Markdown and Word formats.
+export2md(table_descr, strip = TRUE, first.strip = TRUE)
+export2word(
+  table_descr, export_location,
+  which.table = "descr", nmax = TRUE, header.labels = c(),
+  caption = NULL, strip = FALSE, first.strip = FALSE,
+  background = "#D2D2D2", size = NULL, header.background = NULL, 
+  header.color = NULL
+)
+```
+# Survival analysis 
+## Univariate 
+### Table S4: Univariate All population = 6082)
+Level de confidence = 0.995.
+```{r univariate analysis ALL pop}
+# parameters
+CI_choosen = 0.995
+dataset_used = df_all
+export_location <- here("outputs", "tables", "tableS4.docx")
+
+# Create a survival object and subset the data to select only the needed LGE variables
+dataset_used <- dataset_used %>%
+  mutate(
+    VarSurv = Surv(outcome_FU_time_death, outcome_death),
+    CMR_LVEF_by5 = CMR_LVEF/5, 
+    CMR_LVEDV_by10 = CMR_LVEDV/10, 
+    CMR_LVESV_by10 = CMR_LVESV/10,
+    CMR_LGE_Viable = case_when(
+    CMR_LGE_ischemic_transmurality == "B_Subendocardial<50%" ~ 1,
+    CMR_LGE_ischemic_transmurality == "C_Subendocardial≥50%" | CMR_LGE_ischemic_transmurality == "D_Transmural" ~ 2,
+    TRUE ~ 3),
+    CMR_LGE_Viable = factor(CMR_LGE_Viable, levels = c(1,2,3), labels = c("Viable","NonViable","NoLGE")),
+    CMR_LGE_Viable_Revasc = case_when(
+      CMR_LGE_Viable == "Viable" & outcome_revascularisation_90days == "Yes" ~ 1,
+      CMR_LGE_Viable == "Viable" & outcome_revascularisation_90days == "No" ~ 2,
+      CMR_LGE_Viable == "NonViable" & outcome_revascularisation_90days == "Yes" ~ 3,
+      CMR_LGE_Viable == "NonViable" & outcome_revascularisation_90days == "No" ~ 4,
+      TRUE ~ 0), CMR_LGE_Viable_Revasc = factor(CMR_LGE_Viable_Revasc, levels = c(0,1,2,3,4), 
+                                                labels = c("No_LGE","Viable_Revasc","Viable_NonRevasc","NonViable_Revasc","NonViable_NonRevasc")
+  )
+    ) %>%
+  select(
+    VarSurv, demo_age, demo_gender, demo_BMI, CV_risk_diabete, CV_risk_HTA, CV_risk_obesity, CV_risk_dyslipidemia,
+    CV_risk_Smoking, history_med_MI, history_coronary_procedure, history_interv_PCI, history_interv_CABG, med_periph_atheroma, history_stroke, med_pacemaker, med_CKD, history_hospit_HF, history_AFib, clini_NYHA,
+    clini_cardiac_rythm, CMR_LVEF_by5, CMR_LVEDV_by10, CMR_LVESV_by10,
+    CMR_LV_mass, CMR_RV_dysfunction, 
+    CMR_LGE_presence_ischemic_or_midwall,
+    CMR_LGE_presence_ischemic_and_midwall,
+    CMR_LGE_type,
+    outcome_revascularisation_90days,
+    CMR_LGE_Viable,
+    CMR_LGE_Viable_Revasc
+  )
+
+# Perform survival analysis and create a table
+survival_analysis_list <- createTable(compareGroups(VarSurv ~ ., data = dataset_used, method = NA, conf.level = CI_choosen), hide = "No", show.all = TRUE, show.ratio = TRUE)
+
+# Export the death outcomes summary table to Markdown and Word formats.
+export2md(survival_analysis_list, strip = TRUE, first.strip = TRUE)
+export2word(
+  survival_analysis_list, export_location,
+  which.table = "descr", nmax = TRUE, header.labels = c(),
+  caption = NULL, strip = FALSE, first.strip = FALSE,
+  background = "#D2D2D2", size = NULL, header.background = NULL, 
+  header.color = NULL
+)
+```
+
+### Table 2 (left columns): Univariate LGE population = 3591)
+Level de confidence = 0.995.
+```{r univariate analysis LGE pop}
+# parameters
+CI_choosen = 0.995
+dataset_used = df_LGE
+export_location <- here("outputs", "tables", "table2_univ.docx")
+
+# Create a survival object and subset the data to select only the needed LGE variables
+dataset_used <- dataset_used %>%
+  mutate(
+    VarSurv = Surv(outcome_FU_time_death, outcome_death),
+    CMR_LVEF_by5 = CMR_LVEF/5, 
+    CMR_LVEDV_by10 = CMR_LVEDV/10, 
+    CMR_LVESV_by10 = CMR_LVESV/10,
+    CMR_LGE_Viable = case_when(
+    CMR_LGE_ischemic_transmurality == "B_Subendocardial<50%" ~ 1,
+    CMR_LGE_ischemic_transmurality == "C_Subendocardial≥50%" | CMR_LGE_ischemic_transmurality == "D_Transmural" ~ 2,
+    TRUE ~ 3),
+    CMR_LGE_Viable = factor(CMR_LGE_Viable, levels = c(1,2,3), labels = c("Viable","NonViable","Bug")),
+    CMR_LGE_Viable_Revasc = case_when(
+      CMR_LGE_Viable == "Viable" & outcome_revascularisation_90days == "Yes" ~ 1,
+      CMR_LGE_Viable == "Viable" & outcome_revascularisation_90days == "No" ~ 2,
+      CMR_LGE_Viable == "NonViable" & outcome_revascularisation_90days == "Yes" ~ 3,
+      CMR_LGE_Viable == "NonViable" & outcome_revascularisation_90days == "No" ~ 4,
+      TRUE ~ 5), CMR_LGE_Viable_Revasc = factor(CMR_LGE_Viable_Revasc, levels = c(1,2,3,4,5), 
+                                                labels = c("Viable_Revasc","Viable_NonRevasc","NonViable_Revasc","NonViable_NonRevasc","Bug")
+  )
+    ) %>%
+  select(
+    VarSurv, demo_age, demo_gender, demo_BMI, CV_risk_diabete, CV_risk_HTA, CV_risk_obesity, CV_risk_dyslipidemia,
+    CV_risk_Smoking, history_med_MI, history_coronary_procedure, history_interv_PCI, history_interv_CABG, med_periph_atheroma, history_stroke, med_pacemaker, med_CKD, history_hospit_HF, history_AFib, clini_NYHA,
+    clini_cardiac_rythm, CMR_LVEF_by5, CMR_LVEDV_by10, CMR_LVESV_by10,
+    CMR_LV_mass, CMR_RV_dysfunction, 
+    CMR_LGE_presence_ischemic_or_midwall,
+    CMR_LGE_presence_ischemic_and_midwall,
+    CMR_LGE_type,
+    outcome_revascularisation_90days,
+    CMR_LGE_Viable,
+    CMR_LGE_Viable_Revasc
+  )
+
+# Perform survival analysis and create a table
+survival_analysis_list <- createTable(compareGroups(VarSurv ~ ., data = dataset_used, method = NA, conf.level = CI_choosen), hide = "No", show.all = TRUE, show.ratio = TRUE)
+
+# Export the death outcomes summary table to Markdown and Word formats.
+export2md(survival_analysis_list, strip = TRUE, first.strip = TRUE)
+export2word(
+  survival_analysis_list, export_location,
+  which.table = "descr", nmax = TRUE, header.labels = c(),
+  caption = NULL, strip = FALSE, first.strip = FALSE,
+  background = "#D2D2D2", size = NULL, header.background = NULL, 
+  header.color = NULL
+)
+```
+
+## Multivariate
+
+### LGE patient (To build table 2)
+
+#### Analysis with traditional risk factors {.tabset}
+
+##### Model 1 Clinical
+```{r Model nested 1 }
+df_selected <- df_LGE %>% 
+  select( 
+    outcome_FU_time_death, outcome_death, demo_age, demo_gender , demo_BMI , CV_risk_diabete , CV_risk_Smoking , CV_risk_dyslipidemia ,  history_hospit_HF , history_AFib , med_CKD , history_med_MI , CMR_LVEF
+  )
+
+model_1 <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~., 
+                 data = df_selected) 
+
+tbl_regression(model_1, exponentiate = TRUE, conf.level = 0.995, pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle 1 - LGE - risk_litterature "))
+```
+
+##### Model 2 Clinical + LGE extent
+```{r Model nested 2 LGE tradi}
+df_selected <- df_LGE %>% 
+  select( 
+    outcome_FU_time_death, outcome_death, 
+    CMR_LGE_ischemic_extent_categ,
+    demo_age, demo_gender , demo_BMI , CV_risk_diabete , CV_risk_Smoking , CV_risk_dyslipidemia ,  history_hospit_HF , history_AFib , med_CKD , history_med_MI , CMR_LVEF
+  )
+
+model_2 <-coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~., 
+                 data = df_selected) 
+
+tbl_regression(model_2, exponentiate = TRUE, conf.level = 0.995, pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle 1 - LGE - risk_litterature + LGE extent"))
+```
+
+##### Model 3 Clinical + LGE extent + LGE granularity (transmurality, localisation, additional midwall)
+```{r model nested 3}
+df_selected <- df_LGE %>% 
+  select( 
+    outcome_FU_time_death, outcome_death, 
+    CMR_LGE_ischemic_extent_categ,
+    CMR_LGE_ischemic_transmurality,
+    CMR_LGE_ischemic_location_4,
+    CMR_LGE_midwall_presence,
+    demo_age, demo_gender , demo_BMI , CV_risk_diabete , CV_risk_Smoking , CV_risk_dyslipidemia ,  history_hospit_HF , history_AFib , med_CKD , history_med_MI , CMR_LVEF
+  )
+
+model_3 <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ ., 
+                 data = df_selected) 
+
+
+tbl_regression(model_3, exponentiate = TRUE, conf.level = 0.995, pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle 3 - risk litterature + LGE extent + granularity without multi"))
+```
+\n
+Testing Cox Assumptions
+```{r model nested 3 test assomptions}
+df_selected <- df_LGE %>% 
+  select( 
+    outcome_FU_time_death, outcome_death, 
+    CMR_LGE_ischemic_extent_count,
+    CMR_LGE_ischemic_transmurality,
+    CMR_LGE_ischemic_location_4,
+    CMR_LGE_midwall_presence,
+    demo_age, demo_gender , demo_BMI , CV_risk_diabete , CV_risk_Smoking , CV_risk_dyslipidemia ,  history_hospit_HF , history_AFib , med_CKD , history_med_MI , CMR_LVEF
+  )
+
+model_3 <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ ., 
+                 data = df_selected) 
+###  Testing cox assumption of the full model. 
+# http://www.sthda.com/english/wiki/cox-model-assumptions
+
+# Testing assumption for this model
+# 1]  : The proportional hazard assumption is supported by a non-significant relationship between residual (p>0.05)
+# In summary, Schoenfeld residuals are a tool to check the proportional hazards assumption in survival analysis, particularly in Cox proportional hazards models. By visualizing the residuals for each predictor variable, you can assess whether the hazard rate remains proportional over time or if the assumption is violated. If the assumption is violated, you may need to consider alternative modeling approaches or transformations of variables to address the issue.
+cox.zph(model_3) # global residual 0.289
+ggcoxzph(cox.zph(model_3))[1:4] # plot all residuals and it's nice !
+ggcoxzph(cox.zph(model_3)[1:4]) # plot in one plot
+
+# 2] Testing influential observations
+gggraph <- ggcoxdiagnostics(model_3, type = "dfbeta",
+                 linear.predictions = FALSE, ggtheme = theme_bw()) # ok pas trop de residual quand on regarde visuellement, c'est cool (on peut faire la même chose avec la deviance --> type = "deviance")
+
+# 3] Testing  non linearity (for continuous variable only !)
+ggcoxfunctional(Surv(outcome_FU_time_death, outcome_death)~ CMR_LGE_ischemic_extent_count, data = df_selected) # better use linear like we did --> was not the case then
+
+```
+
+##### Nest Model 4 - with revascularization
+```{r model nested 4 + revasc}
+df_selected <- df_LGE %>% 
+  select( 
+    outcome_FU_time_death, outcome_death, 
+    CMR_LGE_ischemic_extent_categ,
+    CMR_LGE_ischemic_transmurality,
+    CMR_LGE_ischemic_location_4,
+    CMR_LGE_midwall_presence,
+    demo_age, demo_gender , demo_BMI , CV_risk_diabete , CV_risk_Smoking , CV_risk_dyslipidemia ,  history_hospit_HF , history_AFib , med_CKD , history_med_MI , CMR_LVEF, outcome_revascularisation_90days)
+
+model_4 <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ ., 
+                 data = df_selected) 
+
+tbl_regression(model_4, exponentiate = TRUE, conf.level = 0.995, pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle 4 - risk litterature + LGE extent + granularity without multi + revasc"))
+```
+##### All multi in one
+```{r Test multivariate in one table}
+df_selected <- df_LGE %>% 
+  select( 
+    outcome_FU_time_death, outcome_death, 
+    demo_age, demo_gender , demo_BMI , CV_risk_diabete , CV_risk_Smoking , CV_risk_dyslipidemia ,  history_hospit_HF, history_AFib , med_CKD , history_med_MI , CMR_LVEF, CMR_LGE_ischemic_extent_categ,
+    CMR_LGE_ischemic_transmurality,
+    CMR_LGE_ischemic_location_4,
+    CMR_LGE_midwall_presence, outcome_revascularisation_90days)
+
+
+model_1 <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ demo_age+ demo_gender + demo_BMI + CV_risk_diabete + CV_risk_Smoking + CV_risk_dyslipidemia +  history_hospit_HF + history_AFib + med_CKD + history_med_MI + CMR_LVEF, 
+                 data = df_selected) 
+model_2<- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ demo_age+ demo_gender + demo_BMI + CV_risk_diabete + CV_risk_Smoking + CV_risk_dyslipidemia +  history_hospit_HF + history_AFib + med_CKD + history_med_MI + CMR_LVEF+ CMR_LGE_ischemic_extent_categ,
+                 data = df_selected) 
+model_3<- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ demo_age+ demo_gender + demo_BMI + CV_risk_diabete + CV_risk_Smoking + CV_risk_dyslipidemia +  history_hospit_HF + history_AFib + med_CKD + history_med_MI + CMR_LVEF+ CMR_LGE_ischemic_extent_categ+ CMR_LGE_ischemic_transmurality+
+    CMR_LGE_ischemic_location_4+
+    CMR_LGE_midwall_presence,
+                 data = df_selected) 
+model_4 <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ ., 
+                 data = df_selected) 
+
+# FONCTION 
+format_results <- function(model_summary) {
+  # Extract coefficients and their statistics
+  coef_df <- coef(summary(model_summary))
+  rownames(coef_df) <- rownames(summary(model_summary)$coefficients)
+
+  # Extract log-transformed 99.5% confidence intervals
+  log_ci_df <- confint(model_summary, level = 0.995)
+  rownames(log_ci_df) <- rownames(coef(summary(model_summary)))
+
+  # Initialize an empty vector to store formatted results
+  formatted <- vector("character", nrow(coef_df))
+
+  # Loop through each row to format the results
+  for(i in 1:nrow(coef_df)) {
+    coef <- exp(coef_df[i, "coef"])
+    lower_ci_log <- log_ci_df[i, 1]
+    upper_ci_log <- log_ci_df[i, 2]
+    lower_ci <- exp(lower_ci_log) # Exponentiate lower CI
+    upper_ci <- exp(upper_ci_log) # Exponentiate upper CI
+    p_value <- coef_df[i, "Pr(>|z|)"]
+
+    # Format the coefficients and CIs to two decimal places, p-values to three decimal places
+    formatted[i] <- sprintf("%.2f (%.2f;%.2f), p=%.3f", coef, lower_ci, upper_ci, p_value)
+  }
+
+  return(formatted)
+}
+
+
+
+# Apply formatting to each model's results
+Results1 <- format_results(model_1)
+Results2 <- format_results(model_2)
+Results3 <- format_results(model_3)
+Results4 <- format_results(model_4)
+
+# Determine the maximum number of rows
+max_rows <- max(length(Results1), length(Results2), length(Results3), length(Results4))
+
+# Extract variable names from model_4 coefficients
+variable_names <- names(coef(model_4))
+
+# Create the BigT dataframe
+BigT <- data.frame(
+  Variable = variable_names,
+  Multi1 = rep(NA, length(variable_names)),
+  Multi2 = rep(NA, length(variable_names)),
+  Multi3 = rep(NA, length(variable_names)),
+  Multi4 = rep(NA, length(variable_names))
+)
+
+# Assign results to each column, filling in NA for missing values
+BigT$Multi1[1:length(Results1)] <- Results1
+BigT$Multi2[1:length(Results2)] <- Results2
+BigT$Multi3[1:length(Results3)] <- Results3
+BigT$Multi4[1:length(Results4)] <- Results4
+
+# Convert the dataframe to a flextable
+ft <- flextable(BigT)
+
+# Adjust the width of the table to fit the page
+ft <- set_table_properties(ft, layout = "autofit")
+
+# Create a new Word document
+doc <- read_docx() %>%
+  body_add_par("Multivariate Analysis Results", style = "heading 1") %>%
+  body_add_flextable(ft)
+
+
+# Save the Word document to a specified path
+
+print(doc, target = here("outputs", "tables", "TableS6_multivariate_analysis_results.docx"))
+
+# export in html
+knitr::kable(BigT, caption = "Results of Multivariate Analysis", format = "html") %>%
+  kableExtra::kable_styling(full_width = F, bootstrap_options = c("striped", "hover", "condensed", "bordered"))
+```
+
+#### Analysis with stepwise risk factors {.tabset}
+
+##### Variable selection
+```{r Stepwise Cox}
+library(dplyr)
+library(StepReg)
+library(survival)
+
+# Assuming df_LGE is your initial dataset
+df_selected <- df_LGE %>% 
+  mutate_if(is.factor, as.numeric) %>%
+  select(outcome_death, outcome_FU_time_death,
+         demo_age, demo_gender, demo_BMI, CV_risk_diabete, CV_risk_obesity, CV_risk_dyslipidemia,
+         CV_risk_Smoking, history_med_MI, history_coronary_procedure, history_interv_PCI, history_interv_CABG, med_periph_atheroma, history_stroke, med_pacemaker, med_CKD, history_hospit_HF, history_AFib, clini_NYHA,
+         clini_cardiac_rythm, CMR_LVEF, CMR_LVEDV, CMR_LVESV,
+         CMR_LV_mass, CMR_RV_dysfunction) # CV_risk_HTA
+
+# Define the Cox model formula
+formula <- Surv(outcome_FU_time_death, outcome_death) ~ .
+
+# Run stepwise Cox regression
+stepwise_result <- stepwiseCox(
+  formula = formula,
+  data = df_selected,
+  sle = 0.05,
+  sls = 0.1,
+  selection = "bidirection",  # Choose your selection method
+  select = "SL" #,              # Choose your selection criterion
+  # method = "Breslow"            # Choose your method for tie handling "Efron"
+)
+
+# View the results
+summary(stepwise_result)
+stepwise_result
+```
+##### Model 1 Clinical
+```{r Model nested 1 - stepwise}
+# Model used 
+df_stepwise_selected <- df_LGE %>% 
+  select(outcome_FU_time_death, outcome_death, demo_age, demo_gender, CV_risk_diabete, med_CKD, med_periph_atheroma, history_hospit_HF,  CMR_RV_dysfunction, CMR_LVEF
+  )
+
+model_1 <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ .,
+                 data = df_stepwise_selected) 
+
+tbl_regression(model_1, exponentiate = TRUE, conf.level = 0.995, pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle 1 - LGE - risk stepwise "))
+
+```
+
+##### Model 2 Clinical + LGE extent
+
+```{r Model nested 2 - stepwise}
+df_stepwise_selected <- df_LGE %>% 
+  select(outcome_FU_time_death, outcome_death, 
+         CMR_LGE_ischemic_extent_categ, # variable added 
+         demo_age, demo_gender, CV_risk_diabete, med_CKD, med_periph_atheroma, history_hospit_HF,  CMR_RV_dysfunction, CMR_LVEF
+  )
+
+# Model 
+model_2 <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ .,
+                 data = df_stepwise_selected) 
+
+tbl_regression(model_2, exponentiate = TRUE, conf.level = 0.995, pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle 2 - LGE - risk stepwise + LGE extent"))
+
+```
+
+##### Model 3 Clinical + LGE extent + LGE granularity (transmurality, localisation, additional midwall)
+
+```{r model nested 3 stepwise}
+df_stepwise_selected <- df_LGE %>% 
+  select(outcome_FU_time_death, outcome_death, 
+         CMR_LGE_ischemic_extent_categ, # variable added 
+         CMR_LGE_midwall_presence,
+         CMR_LGE_ischemic_transmurality,
+         CMR_LGE_ischemic_location_4,
+         demo_age, demo_gender, CV_risk_diabete, med_CKD, med_periph_atheroma, history_hospit_HF,  CMR_RV_dysfunction, CMR_LVEF
+  ) 
+
+# tHe model 
+model_3 <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ .,
+                 data = df_stepwise_selected) 
+
+tbl_regression(model_3, exponentiate = TRUE, conf.level = 0.995, pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle 3 - risk stepwise + LGE extent + granularity"))
+```
+
+#### Incremental model
+NB : M1 = IDI ; M2 = continuous NRI
+
+|                                                      | C-index            | Chi 2  | LR Test | NRI   | IDI   |
+|--------------|------------|------------|------------|------------|------------|
+| Model1 : Clin                                       | 0.688 (0.644-0.731)     | 247.3  | \<0.001| ref   | ref   |
+| Model2 : Clin + LGE categ                           | 0.831 (0.800-0.862)     | 898.3  | \<0.001| 0.228 (0.120-0.323) | 0.172 (0.093-0.222)|
+| Model3 : Clin + LGE categ + LGE granularity         | 0.896 (0.876-0.916)     | 1368.1 | \<0.001| 0.621 (0.389-0.685) | 0.255 (0.143-0.310) |
+
+Comparaison model 1 et 2: (même rés pour 1 et 3)
+- Chi2 : p<0.001
+- IDI : p<0.001
+- NRI : p<0.001
+
+Comparaison model 2 et 3 : 
+- Chi2 : p<0.001
+- IDI : p<0.001
+- NRI : p<0.001
+
+```{r Incremental, eval=FALSE}
+# Importer les modèles
+df_selected <- df_LGE %>% 
+  mutate_if(is.factor, ~ as.numeric(.)) %>%
+  select( 
+    outcome_FU_time_death, outcome_death, 
+    demo_age, demo_gender , demo_BMI , CV_risk_diabete , CV_risk_Smoking ,
+    CV_risk_dyslipidemia ,  history_hospit_HF , history_AFib , med_CKD , 
+    history_med_MI, CMR_LVEF, 
+    CMR_LGE_ischemic_extent_categ, # variable added 
+    CMR_LGE_midwall_presence,
+    CMR_LGE_ischemic_transmurality,
+    CMR_LGE_ischemic_location_4 # 16
+  )
+
+# MODEL 1
+model1 <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ demo_age + demo_gender + demo_BMI + CV_risk_diabete + CV_risk_Smoking + CV_risk_dyslipidemia +  history_hospit_HF + history_AFib + med_CKD + history_med_MI + CMR_LVEF, data = df_selected)
+
+# MODEL 2
+model2 <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ CMR_LGE_ischemic_extent_categ + demo_age + demo_gender + demo_BMI + CV_risk_diabete + CV_risk_Smoking + CV_risk_dyslipidemia +  history_hospit_HF + history_AFib + med_CKD + history_med_MI + CMR_LVEF, data = df_selected)
+
+# MODEL 3
+model3 <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~
+                   CMR_LGE_ischemic_extent_categ + CMR_LGE_midwall_presence +
+                   CMR_LGE_ischemic_transmurality + CMR_LGE_ischemic_location_4 +
+                    demo_age +
+                   demo_gender + demo_BMI + CV_risk_diabete + CV_risk_Smoking +
+                   CV_risk_dyslipidemia +  history_hospit_HF + history_AFib + med_CKD +
+                   history_med_MI + CMR_LVEF, data = df_selected)
+
+# Chi square
+null_model = coxph(formula = Surv(outcome_FU_time_death, outcome_death) ~ 1, data = df_selected)
+anova(null_model,model1)
+anova(null_model,model2)
+anova(null_model,model3)
+
+anova(model1,model2)
+anova(model2,model3)
+
+# NRI et IDI
+
+D <- df_selected
+
+
+# Modele 2
+print("Model 2 : Var + LGE Extent (categ)") #14
+D=D[!is.na(apply(D,1,mean)),] ; dim(D)
+mydata=D[1:3591,]
+t0=9*12 # Modifying it to 5*12
+indata1=mydata[,1:14]; # indata 1 = new model Var (jusqu'à 13) + nb isch count
+indata0=mydata[,1:13] ; n=nrow(D) ; # old model (juste var en ref)
+covs1<-as.matrix(indata1[,c(-1,-2)])
+covs0<-as.matrix(indata0[,c(-1,-2)])
+#--- inference ---
+x<-IDI.INF(mydata[,1:2], covs0, covs1, t0, npert=300, alpha=0.005, seed1 = 23);  # alpha ≠ CI # METTRE UN SEED 
+#--- results ---
+y <- IDI.INF.OUT(x) ;
+
+
+# Modele 3
+print("Model 3 : Var + Extent + Granularity ") #15 + 16 + 17 + 18 
+D=D[!is.na(apply(D,1,mean)),] ; dim(D)
+mydata=D[1:3591,]
+t0=9*12
+indata1=mydata[,1:17]; # indata 1 = new model  - on prend la nouvelle variable en + (la granularity ici)
+indata0=mydata[,1:13] ; n=nrow(D) ; # la variable number d'avant y est laissé QUE LES VIARABLES FORCEES
+covs1<-as.matrix(indata1[,c(-1,-2)]) # remove outcome_FU_time_death and binary outcome
+covs0<-as.matrix(indata0[,c(-1,-2)])
+#--- inference ---
+x<-IDI.INF(mydata[,1:2], covs0, covs1, t0, npert=300, alpha=0.005) ; # mydata[,1:2] correspond to outcome_FU_time_death and binary outcome 
+#--- results ---
+IDI.INF.OUT(x) ;
+IDI.INF.GRAPH(x)
+
+# model comparaison (model 2 and 3)
+print("Model comparaison : Var + Extent vs Var + Granularity  ") 
+D=D[!is.na(apply(D,1,mean)),] ; dim(D)
+mydata=D[1:3591,]
+t0=9*12
+indata1=mydata[,1:17]; # indata 1 = new model  - on prend la nouvelle variable en + (la granularity ici)
+indata0=mydata[,1:14] ; n=nrow(D) ; # la variable number d'avant y est laissé QUE LES VIARABLES FORCEES
+covs1<-as.matrix(indata1[,c(-1,-2)])
+covs0<-as.matrix(indata0[,c(-1,-2)])
+#--- inference ---
+x<-IDI.INF(mydata[,1:2], covs0, covs1, t0, npert=300, alpha=0.995) ;
+#--- results ---
+IDI.INF.OUT(x) ;
+
+# LR 
+# summary(model1)
+x <- concordance(model1)
+# Given data
+concordance_index <- x$concordance
+standard_error <- sqrt(x$var)
+confidence_level <- 0.995  # 99.5% confidence level
+degrees_of_freedom <- 11 
+
+# Calculate critical value
+critical_value <- qt((1 + confidence_level) / 2, df = degrees_of_freedom)
+
+# Calculate confidence interval
+lower_bound <- concordance_index - critical_value * standard_error
+upper_bound <- concordance_index + critical_value * standard_error
+
+# Print the results
+paste("C-index(CI 99.5%) of model 1:",round(concordance_index,3), "(",round(lower_bound,3), "-", round(upper_bound,3), ")")
+
+# summary(model2)
+x <- concordance(model2)
+# Given data
+concordance_index <- x$concordance
+standard_error <- sqrt(x$var)
+confidence_level <- 0.995  # 99.5% confidence level
+degrees_of_freedom <- 13
+
+# Calculate critical value
+critical_value <- qt((1 + confidence_level) / 2, df = degrees_of_freedom)
+
+# Calculate confidence interval
+lower_bound <- concordance_index - critical_value * standard_error
+upper_bound <- concordance_index + critical_value * standard_error
+
+# Print the results
+paste("C-index(CI 99.5%) of model 2:",round(concordance_index,3), "(",round(lower_bound,3), "-", round(upper_bound,3), ")")
+
+# summary(model3)
+x <- concordance(model3)
+# Given data
+concordance_index <- x$concordance
+standard_error <- sqrt(x$var)
+confidence_level <- 0.995  # 99.5% confidence level
+degrees_of_freedom <- 18
+
+# Calculate critical value
+critical_value <- qt((1 + confidence_level) / 2, df = degrees_of_freedom)
+
+# Calculate confidence interval
+lower_bound <- concordance_index - critical_value * standard_error
+upper_bound <- concordance_index + critical_value * standard_error
+
+# Print the results
+paste("C-index(CI 99.5%) of model 3:",round(concordance_index,3), "(",round(lower_bound,3), "-", round(upper_bound,3), ")")
+```
+# FIGURES 
+
+## KM ALL POPULATION {.tabset}
+### KM 1: univariate KM of LGE presence (Figure s1 - B)
+```{r KM_1_LGE_Presence}
+# Data parameters
+df_selected <- df_all 
+compared_with <- "CMR_LGE_ischemic_presence"
+
+# statistics parameters
+confint_choosen = 0.995
+P_vizu = TRUE # To check log rank for all KM graphs
+
+# Graphics viz
+legend_title <- c("Ischemic LGE")
+my_legends <- c("Absence of LGE","Presence of LGE")
+mytitle <- c("Fig 1C - LGE - ALL (N=6082)")
+my_colors <- c("#25A26B","#FF002B")
+size_font = 12
+ylim_choosen = c(0.5,1) 
+xlim_choosen = c(0,13)
+
+#### ------------------------ ####
+  
+### Cox univariate
+model <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ df_selected[[compared_with]], data = df_selected) 
+
+tbl_regression(model, exponentiate = TRUE, conf.level = confint_choosen,  pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle fevg"))
+
+# survfit function
+fit <- survfit(Surv(outcome_FU_time_death/12, outcome_death) ~ df_selected[[compared_with]], conf.int = confint_choosen, data = df_selected) 
+
+# Create survival plot
+ggsurv <- ggsurvplot(fit,
+          conf.int = TRUE,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          plot.title = element_text(hjust = 0.9),
+          legend.title = legend_title, 
+          pval = P_vizu, 
+          pval.coord = c(0.35, 0.80),
+          pval.size = round(size_font/2,digits=0),
+          xlim = xlim_choosen,
+          ylim = ylim_choosen,
+          linetype = 1,
+          legend.labs=my_legends, # Set legend labels
+          palette = my_colors,
+          fontsize = size_font ,
+          font.tickslab = c(size_font),
+          font.x = c(size_font),
+          font.y = c(size_font),
+          risk.table.legend = c(size_font),
+          risk.table.fontsize = c(size_font),
+          break.x.by = 2,
+          axes.offset = 0.01,
+          xlab = "Years of follow-up") 
+ggsurv$plot <- ggsurv$plot + 
+theme(panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = c(0.4, 0.5),  # Move the legend to the top-left corner
+      legend.justification = c(1, 1),  # Anchor the legend 
+      legend.text = element_text(size = size_font+4),  # Adjust the legend text size
+      legend.title = element_text(size = size_font+6)  # Adjust the legend title size
+      )
+
+ggsurv$table <- ggrisktable(fit,
+                            data = df,
+                            color = "strata",
+                            fontsize = size_font/2.5,
+                            y.text = F,   ylab = "",
+                            tables.theme = theme_cleantable(),
+                            palette = my_colors,
+                            font.tickslab = c(size_font),
+                            font.main = c(size_font-2),
+                            break.time.by = 2,
+                            xlim = c(0,12)
+)
+
+ggsurv <- ggsurv + 
+  labs(title = mytitle)
+
+# ggsurv$plot <- ggsurv$plot +
+#   annotate("text",label = results.cox, size = 3)
+
+plot.new()
+print(ggsurv,newpage = FALSE)
+
+# Save the plot in a folder 
+
+ggsave(
+  filename = here("outputs","figures","Fig_LGE_plot.png"), 
+  plot = ggsurv$plot, width = 10, height = 6, units = "in", dpi = 600)
+ggsave(
+  filename = here("outputs","figures","Fig_LGE_risk.png"),
+  plot = ggsurv$table, width = 7, height = 3, units = "in", dpi = 600)
+```
+
+### KM 2 : multivariate KM of LGE presence (Figure s1 - B)
+```{r KM_2_Multi_LGE_presence}
+# Data parameters
+df_selected <- df_all %>%
+  select(
+    outcome_FU_time_death, outcome_death,
+    CMR_LGE_ischemic_presence,
+    demo_age, demo_gender , demo_BMI , CV_risk_diabete , CV_risk_Smoking , CV_risk_dyslipidemia ,  history_hospit_HF , history_AFib , med_CKD , history_med_MI , CMR_LVEF
+  )  %>%
+  mutate(
+    outcome_FU_time_death = outcome_FU_time_death/12
+  ) %>% filter(
+    outcome_FU_time_death <= 9
+  )
+
+
+summary(df_selected$outcome_FU_time_death)
+
+# statistics parameters
+confint_choosen = 0.995
+P_vizu = TRUE # To check log rank for all KM graphs
+
+# Graphics viz
+legend_title <- c("Ischemic LGE")
+my_legends <- c("Absence of LGE","Presence of LGE")
+mytitle <- c("Fig 1C - LGE MULTI - ALL (N=6082)")
+my_colors <- c("#25A26B","#FF002B")
+size_font = 12
+ylim_choosen = c(0.5,1) 
+xlim_choosen = c(0,13)
+
+#### ------------------------ ####
+library(riskRegression)
+model <- coxph(formula = Surv(outcome_FU_time_death, outcome_death) ~ CMR_LGE_ischemic_presence + demo_age+ demo_gender + demo_BMI + CV_risk_diabete + CV_risk_Smoking + CV_risk_dyslipidemia +  history_hospit_HF + history_AFib + med_CKD + history_med_MI + CMR_LVEF, data = df_selected, x = TRUE)
+
+
+adjsurv <- adjustedsurv(data=df_selected, # utilisation de ce filtre pour ne pas avoir l'ensemble de la courbe
+                        variable="CMR_LGE_ischemic_presence",
+                        ev_time="outcome_FU_time_death",
+                        event="outcome_death",
+                        method="direct",
+                        outcome_model=model,
+                        conf_int=TRUE,
+                        conf_level = 0.995,
+                        colors = TRUE,
+                        custom_colors = my_colors,
+                        ggtheme = theme_bw())
+
+
+# plot with confidence intervals
+gg <- plot(adjsurv, 
+     main = mytitle,
+     legend.title = NULL,
+     legend.position = "none",
+     conf_int = TRUE,
+     censoring_ind = "lines",
+     xlab = "years of follow-up",
+     ylab = "Adjusted survival probability",
+     xlim = c(0, 12),
+     ylim = c(0.5, 1),
+     custom_colors = my_colors,
+     ggtheme = theme_bw()) +
+  scale_x_continuous(breaks = seq(0, 12, 2),
+                     labels = seq(0, 12, 2)) +
+  theme(axis.text = element_text(size = size_font),  # Adjust the font size of the axis labels
+        axis.title = element_text(size = size_font + 2),  # Adjust the font size of the axis titles
+        axis.line = element_line(size = 0.1), # reduced size of axis
+        legend.text = element_text(size = size_font + 4),  # Adjust the font size of the legend text
+        legend.title = element_text(size = size_font + 6),  # Adjust the font size of the legend title
+        panel.border = element_rect(color = "black", fill = NA, size = 0.3),
+        panel.background = element_rect(fill = "white"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+# gg$data
+
+ggsave(
+  filename = here("outputs","figures","Fig_LGE_multi_plot.png"), 
+  plot = gg, width = 10, height = 6, units = "in", dpi = 600)
+
+```
+
+
+### KM 3: FEVG 40 x LGE presence (appendix Figure 4)
+```{r KM_3_LGE_x_LVEF}
+# Data parameters
+df_selected <- df_all %>%
+  mutate(
+    FEVG_LGE = case_when(
+      CMR_LGE_ischemic_presence == "No_ischemic_LGE" & CMR_LVEF > 40 ~ "A LGE - ; FEVG ≥ 40",
+      CMR_LGE_ischemic_presence == "No_ischemic_LGE" & CMR_LVEF <= 40 ~ "B LGE - ; FEVG < 40",
+      CMR_LGE_ischemic_presence == "Presence_of_ischemic_LGE" & CMR_LVEF > 40 ~ "C LGE + ; FEVG ≥ 40",
+      CMR_LGE_ischemic_presence == "Presence_of_ischemic_LGE" & CMR_LVEF <= 40 ~ "D LGE + ; FEVG < 40",
+      TRUE ~ NA_character_
+    )
+  )
+
+compared_with <- "FEVG_LGE"
+
+# statistics parameters
+confint_choosen = 0.995
+P_vizu = TRUE # To check log rank for all KM graphs
+
+# Graphics viz
+legend_title <- c("LGE x LVEF")
+my_legends <- c("LGE - ; FEVG > 40","LGE - ; FEVG ≤ 40",
+                        "LGE + ; FEVG > 40",
+                        "LGE + ; FEVG ≤ 40")
+mytitle <- c("Fig 1B - FEVG x LGE - ALL (N=6082)")
+my_colors <- c("#25A26B","#4292C6","#FF002B","#2C3E50")
+size_font = 12
+ylim_choosen = c(0.5,1) 
+xlim_choosen = c(0,13)
+
+#### ------------------------ ####
+  
+### Cox univariate
+model <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ df_selected[[compared_with]], data = df_selected) 
+
+tbl_regression(model, exponentiate = TRUE, conf.level = confint_choosen,  pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle fevg"))
+
+# survfit function
+fit <- survfit(Surv(outcome_FU_time_death/12, outcome_death) ~ df_selected[[compared_with]], conf.int = confint_choosen, data = df_selected) 
+
+# Create survival plot
+ggsurv <- ggsurvplot(fit,
+          conf.int = TRUE,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          plot.title = element_text(hjust = 0.9),
+          legend.title = legend_title, 
+          pval = P_vizu, 
+          pval.coord = c(0.35, 0.80),
+          pval.size = round(size_font/2,digits=0),
+          xlim = xlim_choosen,
+          ylim = ylim_choosen,
+          linetype = 1,
+          legend.labs=my_legends, # Set legend labels
+          palette = my_colors,
+          fontsize = size_font ,
+          font.tickslab = c(size_font),
+          font.x = c(size_font),
+          font.y = c(size_font),
+          risk.table.legend = c(size_font),
+          risk.table.fontsize = c(size_font),
+          break.x.by = 2,
+          axes.offset = 0.01,
+          xlab = "Years of follow-up") 
+ggsurv$plot <- ggsurv$plot + 
+theme(panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = c(0.4, 0.5),  # Move the legend to the top-left corner
+      legend.justification = c(1, 1),  # Anchor the legend 
+      legend.text = element_text(size = size_font+4),  # Adjust the legend text size
+      legend.title = element_text(size = size_font+6)  # Adjust the legend title size
+      )
+
+ggsurv$table <- ggrisktable(fit,
+                            data = df,
+                            color = "strata",
+                            fontsize = size_font/2.5,
+                            y.text = F,   ylab = "",
+                            tables.theme = theme_cleantable(),
+                            palette = my_colors,
+                            font.tickslab = c(size_font),
+                            font.main = c(size_font-2),
+                            break.time.by = 2,
+                            xlim = c(0,12)
+)
+
+ggsurv <- ggsurv + 
+  labs(title = mytitle)
+
+# ggsurv$plot <- ggsurv$plot +
+#   annotate("text",label = results.cox, size = 3)
+
+plot.new()
+print(ggsurv,newpage = FALSE)
+
+# Save the plot in a folder 
+ggsave(
+  filename = here("outputs","figures","Fig_FVEG_LGE_plot.png"), 
+  plot = ggsurv$plot, width = 10, height = 6, units = "in", dpi = 600)
+ggsave(
+  filename = here("outputs","figures","Fig_FEVG_LGE_risk.png"),
+  plot = ggsurv$table, width = 7, height = 3, units = "in", dpi = 600)
+```
+
+### KM 4: Characteristics of LGE (Figure 4)
+```{r KM_4_LGE_type}
+# Data parameters
+df_selected <- df_all 
+
+compared_with <- "CMR_LGE_type"
+
+# statistics parameters
+confint_choosen = 0.995
+P_vizu = TRUE # To check log rank for all KM graphs
+
+# Graphics viz
+mytitle <- c("Fig 1E - LGE type - ALL (N=6082)")
+legend_title <- c("Type of LGE")
+my_legends <- c("No segments","Midwall LGE (excl)", "Ischemic LGE (excl)", "Isch and midwall LGE")
+my_colors <- c("#25A26B","#4292C6","#FF002B","#2C3E50")
+size_font = 12
+ylim_choosen = c(0.5,1) 
+xlim_choosen = c(0,13)
+
+#### ------------------------ ####
+  
+### Cox univariate
+model <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ df_selected[[compared_with]], data = df_selected) 
+
+tbl_regression(model, exponentiate = TRUE, conf.level = confint_choosen,  pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle fevg"))
+
+# survfit function
+fit <- survfit(Surv(outcome_FU_time_death/12, outcome_death) ~ df_selected[[compared_with]], conf.int = confint_choosen, data = df_selected) 
+
+# survdiff(fit) A FAIRE !!!
+
+# Define the two groups for comparison
+group1 <- "Exclusive_midwall_LGE_presence"
+group2 <- "Exclusive_ischemic_LGE_presence"
+
+# Perform log-rank test for the selected groups
+result_logrank <- survdiff(Surv(outcome_FU_time_death/12, outcome_death) ~ df_selected[[compared_with]], subset = c(df_selected[[compared_with]] %in% c(group1, group2)), data = df_selected)
+
+# Print log-rank test result
+print(result_logrank)
+
+
+# Create survival plot
+ggsurv <- ggsurvplot(fit,
+          conf.int = TRUE,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          plot.title = element_text(hjust = 0.9),
+          legend.title = legend_title, 
+          pval = P_vizu, 
+          pval.coord = c(0.35, 0.80),
+          pval.size = round(size_font/2,digits=0),
+          xlim = xlim_choosen,
+          ylim = ylim_choosen,
+          linetype = 1,
+          legend.labs=my_legends, # Set legend labels
+          palette = my_colors,
+          fontsize = size_font ,
+          font.tickslab = c(size_font),
+          font.x = c(size_font),
+          font.y = c(size_font),
+          risk.table.legend = c(size_font),
+          risk.table.fontsize = c(size_font),
+          break.x.by = 2,
+          axes.offset = 0.01,
+          xlab = "Years of follow-up") 
+ggsurv$plot <- ggsurv$plot + 
+theme(panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = c(0.4, 0.5),  # Move the legend to the top-left corner
+      legend.justification = c(1, 1),  # Anchor the legend 
+      legend.text = element_text(size = size_font+4),  # Adjust the legend text size
+      legend.title = element_text(size = size_font+6)  # Adjust the legend title size
+      )
+
+ggsurv$table <- ggrisktable(fit,
+                            data = df,
+                            color = "strata",
+                            fontsize = size_font/2.5,
+                            y.text = F,   ylab = "",
+                            tables.theme = theme_cleantable(),
+                            palette = my_colors,
+                            font.tickslab = c(size_font),
+                            font.main = c(size_font-2),
+                            break.time.by = 2,
+                            xlim = c(0,12)
+)
+
+ggsurv <- ggsurv + 
+  labs(title = mytitle)
+
+# ggsurv$plot <- ggsurv$plot +
+#   annotate("text",label = results.cox, size = 3)
+
+plot.new()
+print(ggsurv,newpage = FALSE)
+
+# Save the plot in a folder 
+ggsave(
+  filename = here("outputs","figures","Fig_LGE_type_plot.png"), 
+  plot = ggsurv$plot, width = 10, height = 6, units = "in", dpi = 600)
+ggsave(
+  filename = here("outputs","figures","Fig_LGE_type_risk.png"),
+  plot = ggsurv$table, width = 7, height = 3, units = "in", dpi = 600)
+```
+
+### KM 5: Revascularization (Figure 6)
+```{r KM_5_revasc}
+# Create a summary table comparing different factors with the presence of LGE in a dataset.
+# parameters
+CI_choosen = 0.995
+# Modification of the dataset
+df_selected <- df_all %>%
+  mutate(
+  CMR_LGE_Viable = case_when(
+    CMR_LGE_ischemic_transmurality == "B_Subendocardial<50%" ~ 1,
+    CMR_LGE_ischemic_transmurality == "C_Subendocardial≥50%" | CMR_LGE_ischemic_transmurality == "D_Transmural" ~ 2,
+    TRUE ~ 3),
+  CMR_LGE_Viable = factor(
+    CMR_LGE_Viable, levels = c(1,2,3), labels = c("Viable","NonViable","NoLGE")
+  ),
+  CMR_LGE_Viable_Revasc = case_when(
+    CMR_LGE_Viable == "Viable" & outcome_revascularisation_90days == "Yes" ~ 1,
+    CMR_LGE_Viable == "Viable" & outcome_revascularisation_90days == "No" ~ 2,
+    CMR_LGE_Viable == "NonViable" & outcome_revascularisation_90days == "Yes" ~ 3,
+    CMR_LGE_Viable == "NonViable" & outcome_revascularisation_90days == "No" ~ 4,
+    TRUE ~ 0),
+  CMR_LGE_Viable_Revasc = factor(
+    CMR_LGE_Viable_Revasc, levels = c(0,1,2,3,4), labels = c("No_LGE","Viable_Revasc","viable_NonRevasc","NonViable_Revasc","NonViable_NonRevasc")
+  )
+  )
+
+compared_with <- "CMR_LGE_Viable_Revasc"
+
+# statistics parameters
+confint_choosen = 0.995
+P_vizu = TRUE # To check log rank for all KM graphs
+
+# Graphics viz
+mytitle <- c("Fig 1E - LGE type - ALL (N=6082)")
+legend_title <- c("Revasc:")
+# my_legends <- c("A low ; no revasc", "B low ; revasc", "C high ; no revasc", "D high ; revasc")
+my_colors <- c("#006400", "darkblue", "#FF0000", "#8B4513", "#000000")
+size_font = 12
+ylim_choosen = c(0,1) 
+xlim_choosen = c(0,13)
+
+#### ------------------------ ####
+  
+### Cox univariate
+model <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ df_selected[[compared_with]], data = df_selected) 
+
+tbl_regression(model, exponentiate = TRUE, conf.level = confint_choosen,  pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle fevg"))
+
+# survfit function
+fit <- survfit(Surv(outcome_FU_time_death/12, outcome_death) ~ df_selected[[compared_with]], conf.int = confint_choosen, data = df_selected) 
+
+# Create survival plot
+ggsurv <- ggsurvplot(fit,
+          conf.int = FALSE,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          plot.title = element_text(hjust = 0.9),
+          legend.title = legend_title, 
+          pval = P_vizu, 
+          pval.coord = c(0.35, 0.80),
+          pval.size = round(size_font/2,digits=0),
+          xlim = xlim_choosen,
+          ylim = ylim_choosen,
+          linetype = 1,
+          # legend.labs=my_legends, # Set legend labels
+          palette = my_colors,
+          fontsize = size_font ,
+          font.tickslab = c(size_font),
+          font.x = c(size_font),
+          font.y = c(size_font),
+          risk.table.legend = c(size_font),
+          risk.table.fontsize = c(size_font),
+          break.x.by = 2,
+          axes.offset = 0.01,
+          xlab = "Years of follow-up") 
+ggsurv$plot <- ggsurv$plot + 
+theme(panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = "none", # c(0.4, 0.5),  # Move the legend to the top-left corner
+      legend.justification = c(1, 1),  # Anchor the legend 
+      legend.text = element_text(size = size_font+4),  # Adjust the legend text size
+      legend.title = element_text(size = size_font+6)  # Adjust the legend title size
+      )
+
+ggsurv$table <- ggrisktable(fit,
+                            data = df,
+                            color = "strata",
+                            fontsize = size_font/2.5,
+                            y.text = F,   ylab = "",
+                            tables.theme = theme_cleantable(),
+                            palette = my_colors,
+                            font.tickslab = c(size_font),
+                            font.main = c(size_font-2),
+                            break.time.by = 2,
+                            xlim = c(0,12)
+)
+
+ggsurv <- ggsurv + 
+  labs(title = mytitle)
+
+plot.new()
+print(ggsurv,newpage = FALSE)
+
+# Save the plot in a folder 
+ggsave(
+  filename = here("outputs","figures","Fig_revasc_plot.png"), 
+  plot = ggsurv$plot, width = 10, height = 6, units = "in", dpi = 600)
+ggsave(
+  filename = here("outputs","figures","Fig_revasc_risk.png"),
+  plot = ggsurv$table, width = 7, height = 3, units = "in", dpi = 600)
+```
+
+## KM LGE POPULATION {.tabset}
+
+### KM 6: LGE extent by categories (Figure 5 A)
+```{r KM_6_LGE_extent}
+# Data parameters
+df_selected <- df_LGE 
+compared_with <- "CMR_LGE_ischemic_extent_categ"
+
+# statistics parameters
+confint_choosen = 0.995
+P_vizu = TRUE # To check log rank for all KM graphs
+
+# Graphics viz
+mytitle <- c("Fig 4A - LGE extent - LGE (N=3,591)")
+legend_title <- c("Type of LGE")
+my_legends <- c("1-2 segments of ischemic LGE", "3-5 ischemic segments", "≥ 6 segments of ischemic")
+my_colors <- c("#4292C6","#FF002B","#2C3E50")
+size_font = 12
+ylim_choosen = c(0,1) 
+xlim_choosen = c(0,13)
+
+### Cox univariate
+model <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ df_selected[[compared_with]], data = df_selected) 
+
+tbl_regression(model, exponentiate = TRUE, conf.level = confint_choosen,  pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle fevg"))
+
+# survfit function
+fit <- survfit(Surv(outcome_FU_time_death/12, outcome_death) ~ df_selected[[compared_with]], conf.int = confint_choosen, data = df_selected) 
+
+# Create survival plot
+ggsurv <- ggsurvplot(fit,
+          conf.int = TRUE,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          plot.title = element_text(hjust = 0.9),
+          legend.title = legend_title, 
+          pval = P_vizu, 
+          pval.coord = c(0.35, 0.80),
+          pval.size = round(size_font/2,digits=0),
+          xlim = xlim_choosen,
+          ylim = ylim_choosen,
+          linetype = 1,
+          legend.labs=my_legends, # Set legend labels
+          palette = my_colors,
+          fontsize = size_font ,
+          font.tickslab = c(size_font),
+          font.x = c(size_font),
+          font.y = c(size_font),
+          risk.table.legend = c(size_font),
+          risk.table.fontsize = c(size_font),
+          break.x.by = 2,
+          axes.offset = 0.01,
+          xlab = "Years of follow-up") 
+ggsurv$plot <- ggsurv$plot + 
+theme(panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = c(0.4, 0.5),  # Move the legend to the top-left corner
+      legend.justification = c(1, 1),  # Anchor the legend 
+      legend.text = element_text(size = size_font+4),  # Adjust the legend text size
+      legend.title = element_text(size = size_font+6)  # Adjust the legend title size
+      )
+
+ggsurv$table <- ggrisktable(fit,
+                            data = df,
+                            color = "strata",
+                            fontsize = size_font/2.5,
+                            y.text = F,   ylab = "",
+                            tables.theme = theme_cleantable(),
+                            palette = my_colors,
+                            font.tickslab = c(size_font),
+                            font.main = c(size_font-2),
+                            break.time.by = 2,
+                            xlim = c(0,12)
+)
+
+ggsurv <- ggsurv + 
+  labs(title = mytitle)
+
+plot.new()
+print(ggsurv,newpage = FALSE)
+
+# Save the plot in a folder 
+ggsave(
+  filename = here("outputs","figures","Fig_LGE_extent_plot.png"), 
+  plot = ggsurv$plot, width = 10, height = 6, units = "in", dpi = 600)
+ggsave(
+  filename = here("outputs","figures","Fig_LGE_extent_risk.png"),
+  plot = ggsurv$table, width = 7, height = 3, units = "in", dpi = 600)
+```
+
+###KM 7 : Midwall Presence (Figure 5D)
+```{r KM_7_Midw}
+# Data parameters
+df_selected <- df_LGE 
+compared_with <- "CMR_LGE_midwall_presence"
+
+# statistics parameters
+confint_choosen = 0.995
+P_vizu = TRUE # To check log rank for all KM graphs
+
+# Graphics viz
+my_legends <- c("Ischemic LGE (excl)", "Isch and midwall LGE")
+mytitle <- c("Fig 4C - LGE midwall - LGE (N=3,591)")
+legend_title <- c("Type of LGE")
+my_colors <- c("#FF002B","#2C3E50")
+size_font = 12
+ylim_choosen = c(0,1) 
+xlim_choosen = c(0,13)
+
+### Cox univariate
+model <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ df_selected[[compared_with]], data = df_selected) 
+
+tbl_regression(model, exponentiate = TRUE, conf.level = confint_choosen,  pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle fevg"))
+
+# survfit function
+fit <- survfit(Surv(outcome_FU_time_death/12, outcome_death) ~ df_selected[[compared_with]], conf.int = confint_choosen, data = df_selected) 
+
+# Create survival plot
+ggsurv <- ggsurvplot(fit,
+          conf.int = TRUE,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          plot.title = element_text(hjust = 0.9),
+          legend.title = legend_title, 
+          pval = P_vizu, 
+          pval.coord = c(0.35, 0.80),
+          pval.size = round(size_font/2,digits=0),
+          xlim = xlim_choosen,
+          ylim = ylim_choosen,
+          linetype = 1,
+          legend.labs=my_legends, # Set legend labels
+          palette = my_colors,
+          fontsize = size_font ,
+          font.tickslab = c(size_font),
+          font.x = c(size_font),
+          font.y = c(size_font),
+          risk.table.legend = c(size_font),
+          risk.table.fontsize = c(size_font),
+          break.x.by = 2,
+          axes.offset = 0.01,
+          xlab = "Years of follow-up") 
+ggsurv$plot <- ggsurv$plot + 
+theme(panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = c(0.4, 0.5),  # Move the legend to the top-left corner
+      legend.justification = c(1, 1),  # Anchor the legend 
+      legend.text = element_text(size = size_font+4),  # Adjust the legend text size
+      legend.title = element_text(size = size_font+6)  # Adjust the legend title size
+      )
+
+ggsurv$table <- ggrisktable(fit,
+                            data = df,
+                            color = "strata",
+                            fontsize = size_font/2.5,
+                            y.text = F,   ylab = "",
+                            tables.theme = theme_cleantable(),
+                            palette = my_colors,
+                            font.tickslab = c(size_font),
+                            font.main = c(size_font-2),
+                            break.time.by = 2,
+                            xlim = c(0,12)
+)
+
+ggsurv <- ggsurv + 
+  labs(title = mytitle)
+
+# ggsurv$plot <- ggsurv$plot +
+#   annotate("text",label = results.cox, size = 3)
+
+plot.new()
+print(ggsurv,newpage = FALSE)
+
+# Save the plot in a folder 
+# Save the plot in a folder 
+ggsave(
+  filename = here("outputs","figures","Fig_midwall_plot.png"), 
+  plot = ggsurv$plot, width = 10, height = 6, units = "in", dpi = 600)
+ggsave(
+  filename = here("outputs","figures","Fig_midwall_risk.png"),
+  plot = ggsurv$table, width = 7, height = 3, units = "in", dpi = 600)
+
+```
+
+###KM 8: Transmurality (figure 5B)
+```{r KM_8_TM}
+# Data parameters
+df_selected <- df_LGE 
+compared_with <- "CMR_LGE_ischemic_transmurality"
+
+# statistics parameters
+confint_choosen = 0.995
+P_vizu = TRUE # To check log rank for all KM graphs
+
+# Graphics viz
+my_legends <- c("Subendocardic <50%", "Subendocardic ≥ 50%", "Transmural")
+mytitle <- c("Fig 4D - LGE transmurality - LGE (N=3,591)")
+legend_title <- c("Type of LGE")
+my_colors <- c("#4292C6","#FF002B","#2C3E50")
+size_font = 12
+ylim_choosen = c(0,1) 
+xlim_choosen = c(0,13)
+
+
+### Cox univariate
+model <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ df_selected[[compared_with]], data = df_selected) 
+
+tbl_regression(model, exponentiate = TRUE, conf.level = confint_choosen,  pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle fevg"))
+
+# survfit function
+fit <- survfit(Surv(outcome_FU_time_death/12, outcome_death) ~ df_selected[[compared_with]], conf.int = confint_choosen, data = df_selected) 
+
+# Create survival plot
+ggsurv <- ggsurvplot(fit,
+          conf.int = TRUE,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          plot.title = element_text(hjust = 0.9),
+          legend.title = legend_title, 
+          pval = P_vizu, 
+          pval.coord = c(0.35, 0.80),
+          pval.size = round(size_font/2,digits=0),
+          xlim = xlim_choosen,
+          ylim = ylim_choosen,
+          linetype = 1,
+          legend.labs=my_legends, # Set legend labels
+          palette = my_colors,
+          fontsize = size_font ,
+          font.tickslab = c(size_font),
+          font.x = c(size_font),
+          font.y = c(size_font),
+          risk.table.legend = c(size_font),
+          risk.table.fontsize = c(size_font),
+          break.x.by = 2,
+          axes.offset = 0.01,
+          xlab = "Years of follow-up") 
+ggsurv$plot <- ggsurv$plot + 
+theme(panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = c(0.4, 0.5),  # Move the legend to the top-left corner
+      legend.justification = c(1, 1),  # Anchor the legend 
+      legend.text = element_text(size = size_font+4),  # Adjust the legend text size
+      legend.title = element_text(size = size_font+6)  # Adjust the legend title size
+      )
+
+ggsurv$table <- ggrisktable(fit,
+                            data = df,
+                            color = "strata",
+                            fontsize = size_font/2.5,
+                            y.text = F,   ylab = "",
+                            tables.theme = theme_cleantable(),
+                            palette = my_colors,
+                            font.tickslab = c(size_font),
+                            font.main = c(size_font-2),
+                            break.time.by = 2,
+                            xlim = c(0,12)
+)
+
+ggsurv <- ggsurv + 
+  labs(title = mytitle)
+
+
+plot.new()
+print(ggsurv,newpage = FALSE)
+
+# Save the plot in a folder 
+ggsave(
+  filename = here("outputs","figures","Fig_LGE_transm_plot.png"), 
+  plot = ggsurv$plot, width = 10, height = 6, units = "in", dpi = 600)
+ggsave(
+  filename = here("outputs","figures","Fig_LGE_transm_risk.png"),
+  plot = ggsurv$table, width = 7, height = 3, units = "in", dpi = 600)
+```
+
+###KM 9 : LGE isch localisation (Figure 5C)
+```{r KM_9_LGE_loca4}
+# Data parameters
+df_selected <- df_LGE
+compared_with <- "CMR_LGE_ischemic_location_4"
+
+# statistics parameters
+confint_choosen = 0.995
+P_vizu = TRUE # To check log rank for all KM graphs
+
+# Graphics viz
+legend_title <- c("Location ischemic LGE")
+my_legends <- c("Other location", "Anterior", "Septal")
+mytitle <- c("Fig 4F - LGE isch localisation - LGE (N=3,591)")
+my_colors <- c("#4292C6","#FF002B","#2C3E50")
+size_font = 12
+ylim_choosen = c(0,1) 
+xlim_choosen = c(0,13)
+
+
+### Cox univariate
+model <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ df_selected[[compared_with]], data = df_selected) 
+
+tbl_regression(model, exponentiate = TRUE, conf.level = confint_choosen,  pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle fevg"))
+
+# survfit function
+fit <- survfit(Surv(outcome_FU_time_death/12, outcome_death) ~ df_selected[[compared_with]], conf.int = confint_choosen, data = df_selected) 
+
+# Create survival plot
+ggsurv <- ggsurvplot(fit,
+          conf.int = TRUE,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          plot.title = element_text(hjust = 0.9),
+          legend.title = legend_title, 
+          pval = P_vizu, 
+          pval.coord = c(0.35, 0.80),
+          pval.size = round(size_font/2,digits=0),
+          xlim = xlim_choosen,
+          ylim = ylim_choosen,
+          linetype = 1,
+          legend.labs=my_legends, # Set legend labels
+          palette = my_colors,
+          fontsize = size_font ,
+          font.tickslab = c(size_font),
+          font.x = c(size_font),
+          font.y = c(size_font),
+          risk.table.legend = c(size_font),
+          risk.table.fontsize = c(size_font),
+          break.x.by = 2,
+          axes.offset = 0.01,
+          xlab = "Years of follow-up") 
+ggsurv$plot <- ggsurv$plot + 
+theme(panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = c(0.4, 0.5),  # Move the legend to the top-left corner
+      legend.justification = c(1, 1),  # Anchor the legend 
+      legend.text = element_text(size = size_font+4),  # Adjust the legend text size
+      legend.title = element_text(size = size_font+6)  # Adjust the legend title size
+      )
+
+ggsurv$table <- ggrisktable(fit,
+                            data = df,
+                            color = "strata",
+                            fontsize = size_font/2.5,
+                            y.text = F,   ylab = "",
+                            tables.theme = theme_cleantable(),
+                            palette = my_colors,
+                            font.tickslab = c(size_font),
+                            font.main = c(size_font-2),
+                            break.time.by = 2,
+                            xlim = c(0,12)
+)
+
+ggsurv <- ggsurv + 
+  labs(title = mytitle)
+
+# ggsurv$plot <- ggsurv$plot +
+#   annotate("text",label = results.cox, size = 3)
+
+plot.new()
+print(ggsurv,newpage = FALSE)
+
+# Save the plot in a folder 
+ggsave(
+  filename = here("outputs","figures","Fig_LGE_loca_plot.png"), 
+  plot = ggsurv$plot, width = 10, height = 6, units = "in", dpi = 600)
+ggsave(
+  filename = here("outputs","figures","Fig_LGE_loca_risk.png"),
+  plot = ggsurv$table, width = 7, height = 3, units = "in", dpi = 600)
+
+```
+
+###KM 10 : LGE isch localisation 6 (appendix figure 7)
+```{r KM_10_LGE_loca6}
+# Data parameters
+df_selected <- df_LGE 
+
+compared_with <- "CMR_LGE_ischemic_location_6"
+
+# statistics parameters
+confint_choosen = 0.995
+P_vizu = TRUE # To check log rank for all KM graphs
+
+# Graphics viz
+legend_title <- c("Location ischemic LGE")
+my_legends <- c("A_apical", "B_Inferior", "C_Lateral", "D_Anterior", "E_Septal", "Several_localization")
+mytitle <- c("Fig 4G - LGE isch localisation - LGE (N=3,591)")
+my_colors <- c("#006400", "darkblue", "darkviolet", "#FF0000", "#8B4513", "#000000")
+size_font = 12
+ylim_choosen = c(0,1) 
+xlim_choosen = c(0,13)
+
+
+### Cox univariate
+model <- coxph(formula =  Surv(outcome_FU_time_death, outcome_death) ~ df_selected[[compared_with]], data = df_selected) 
+
+tbl_regression(model, exponentiate = TRUE, conf.level = confint_choosen,  pvalue_fun = function(x) style_pvalue(x, digits = 3), label = list()) %>% bold_p() %>% 
+  as_gt() %>% gt::tab_header(gt::md("Modèle fevg"))
+
+# survfit function
+fit <- survfit(Surv(outcome_FU_time_death/12, outcome_death) ~ df_selected[[compared_with]], conf.int = confint_choosen, data = df_selected) 
+
+# Create survival plot
+ggsurv <- ggsurvplot(fit,
+          conf.int = FALSE,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          plot.title = element_text(hjust = 0.9),
+          legend.title = legend_title, 
+          pval = P_vizu, 
+          pval.coord = c(0.35, 0.80),
+          pval.size = round(size_font/2,digits=0),
+          xlim = xlim_choosen,
+          ylim = ylim_choosen,
+          linetype = 1,
+          legend.labs=my_legends, # Set legend labels
+          palette = my_colors,
+          fontsize = size_font ,
+          font.tickslab = c(size_font),
+          font.x = c(size_font),
+          font.y = c(size_font),
+          risk.table.legend = c(size_font),
+          risk.table.fontsize = c(size_font),
+          break.x.by = 2,
+          axes.offset = 0.01,
+          xlab = "Years of follow-up") 
+ggsurv$plot <- ggsurv$plot + 
+theme(panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = c(0.4, 0.5),  # Move the legend to the top-left corner
+      legend.justification = c(1, 1),  # Anchor the legend 
+      legend.text = element_text(size = size_font+4),  # Adjust the legend text size
+      legend.title = element_text(size = size_font+6)  # Adjust the legend title size
+      )
+
+ggsurv$table <- ggrisktable(fit,
+                            data = df,
+                            color = "strata",
+                            fontsize = size_font/2.5,
+                            y.text = F,   ylab = "",
+                            tables.theme = theme_cleantable(),
+                            palette = my_colors,
+                            font.tickslab = c(size_font),
+                            font.main = c(size_font-2),
+                            break.time.by = 2,
+                            xlim = c(0,12)
+)
+
+ggsurv <- ggsurv + 
+  labs(title = mytitle)
+
+# ggsurv$plot <- ggsurv$plot +
+#   annotate("text",label = results.cox, size = 3)
+
+plot.new()
+print(ggsurv,newpage = FALSE)
+
+# Save the plot in a folder 
+ggsave(
+  filename = here("outputs","figures","Fig_LGE_loca6_plot.png"), 
+  plot = ggsurv$plot, width = 10, height = 6, units = "in", dpi = 600)
+ggsave(
+  filename = here("outputs","figures","Fig_LGE_loca6_risk.png"),
+  plot = ggsurv$table, width = 7, height = 3, units = "in", dpi = 600)
+
+```
+
+## Annualized death rate (ARP)
+exported in csv to build the graphics on excell
+```{r ARP 1}
+# 1] extent
+py <- pyears(Surv(outcome_FU_time_death*(365/12), outcome_death) ~ CMR_LGE_ischemic_extent_categ, data = df_LGE, data.frame = T)
+df_ext<<- py$data
+colnames(df_ext)[1] <- "subgroups"
+df_ext$group <- "B_Ext"
+df_ext$annual_rates <- round(100*(df_ext$event/df_ext$pyears), 1) # Ca fait du 100 personnes années
+
+# 2] TRANSMURALITY
+py <- pyears(Surv(outcome_FU_time_death*(365/12), outcome_death) ~ CMR_LGE_ischemic_transmurality, data = df_LGE, data.frame = T)
+df_transm<<- py$data
+colnames(df_transm)[1] <- "subgroups"
+df_transm$group <- "C_Transm"
+df_transm$annual_rates <- round(100*(df_transm$event/df_transm$pyears), 1) # Ca fait du 100 personnes années
+
+# 3] MULTIPLE
+py <- pyears(Surv(outcome_FU_time_death*(365/12), outcome_death) ~ CMR_LGE_ischemic_multiple, data = df_LGE, data.frame = T)
+df_multi<<- py$data
+colnames(df_multi)[1] <- "subgroups"
+df_multi[1,1] <- "A_Focal"
+df_multi[2,1] <- "B_Multi"
+df_multi$group <- "D_Multiple"
+df_multi$annual_rates <- round(100*(df_multi$event/df_multi$pyears), 1) # Ca fait du 100 personnes années
+
+# 4] SEPTAL
+py <- pyears(Surv(outcome_FU_time_death*(365/12), outcome_death) ~ CMR_LGE_ischemic_location_4, data = df_LGE, data.frame = T)
+df_septal <- py$data
+colnames(df_septal)[1] <- "subgroups"
+df_septal[1,1] <- "A_No_septal"
+df_septal[2,1] <- "B_Anterior"
+df_septal[3,1] <- "C_Septal"
+df_septal$group <- "E_localization"
+df_septal$annual_rates <- round(100*(df_septal$event/df_septal$pyears), 1) # Ca fait du 100 personnes années
+
+# 5] MIDWALL
+py <- pyears(Surv(outcome_FU_time_death*(365/12), outcome_death) ~ CMR_LGE_midwall_presence, data = df_LGE, data.frame = T)
+df_mid<<- py$data
+colnames(df_mid)[1] <- "subgroups"
+df_mid[1,1] <- "A_No_midwall_ass"
+df_mid[2,1] <- "B_Midwall_ass"
+df_mid$group <- "F_Midwall"
+df_mid
+df_mid$annual_rates <- round(100*(df_mid$event/df_mid$pyears), 1) # Ca fait du 100 personnes années
+
+# GLOBAL DF
+df_global <- rbind(df_ext, df_transm, df_multi, df_septal ,df_mid) #df_normal
+df_global <- df_global %>% mutate(subgroups = paste(as.character(group), "~", subgroups,sep=""))
+
+
+# Create the grouped barplot using ggplot2
+library(ggplot2)
+
+# Create the plot
+gg_graph <- ggplot(df_global, aes(x = group, y = annual_rates, fill = subgroups, label = annual_rates)) +
+  geom_bar(position = "dodge", stat = "identity", just = 1, width = 0.7) +  # Equal-width bars
+  scale_fill_manual(values = adjustcolor(c("#4292C6","#D52B2B","#2C3E50","#4292C6","#D52B2B","#2C3E50", "#D52B2B", "#2C3E50","#4292C6","#D52B2B","#2C3E50","#D52B2B","#2C3E50"), alpha.f = 0.8)) +  # Set custom colors
+  labs(title = "Grouped Barplot with Subgroups",
+       x = "group",  # X-axis label
+       y = "Annual Rates",     # Y-axis label
+       fill = "subgroups") +   # Legend title
+  geom_text(
+    aes(x = group, y = annual_rates, label = sprintf("%.1f", annual_rates), group = subgroups),
+    position = position_dodge(width = 1),
+    vjust = 0, size = 4, fontface = "bold") +
+  scale_y_continuous(expand = c(0, 1), limits = c(0,15), breaks = seq(0, 17.5, 2.5)) +
+  theme_bw()+
+  theme(
+    panel.grid.major = element_line(color = "gray", size = 0.2, linetype = "dotted"),
+    panel.grid.minor = element_line(color = "gray", size = 0.2, linetype = "dotted"),
+    plot.title = element_text(hjust = 0.5),
+    axis.title.x = element_blank(),
+    # axis.text.x = element_blank(), to remove the x axis legend
+    axis.line.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.y = element_text(size = 12, face = "bold"),
+    panel.border = element_blank(),
+    legend.position = "none",  # Move the legend to the top-left corner
+    legend.justification = c(0, 1),  # Anchor the legend to the top-left corner
+    legend.text = element_text(size = 12),  # Adjust the legend text size
+    legend.title = element_text(size = 14)  # Adjust the legend title size
+  )
+gg_graph <- gg_graph + coord_flip()
+
+plot.new()
+print(gg_graph,newpage = FALSE)
+
+# finaly details done using excell
+write.csv(df_global, file = here("outputs","tables","annualized_death_rate.csv"))
+
+
+# Compare subgroups
+print(df_global) # u see the dataframe used to build the graph
+n = 1 # now i want to compare by 2 therefore i use this method
+
+rate_comp <- ratedifference(df_global$event[n + 1], df_global$event[n], df_global$pyears[n + 1], df_global$pyears[n], CRC = TRUE, conf.level = 0.995)
+value <- as.character(df_global$p.value)
+result <- ifelse(df_global$p.value < 0.001 | df_global$p.value == 0, "<0.001", value)
+print(result)
+```
+## Forest Plot (appendix figure 3)
+```{r Forest_LGE_presence}
+library(forestplot)
+# Function used
+# forest function to retrieve all important parameters from the coxph function in each subgroups. 
+forest_function <- function(df){
+  confint_choosen = 0.995 # conf int can be change
+  study_name <- deparse(substitute(df)) # assign the name to the column
+  coxtest <- coxph(Surv(outcome_FU_time_death, outcome_death)~ CMR_LGE_ischemic_presence, data = df) #cox function
+  HR <- as.numeric(exp(coxtest$coefficients)) 
+  CI_lower <- exp(confint(coxtest,level=confint_choosen))[,1] # Calculate the lower and upper CI bounds for the hazard ratio using the specified confidence level (confint_choosen)
+  CI_higher <- exp(confint(coxtest,level=confint_choosen))[,2]
+  Pval <- summary(coxtest)$coefficients[,5]   # Extract the p-value from the coefficient summary of the Cox regression
+  Table_events <- table(df$outcome_death, df$CMR_LGE_ischemic_presence) # Create a contingency table of the events (outcome_death) and LGE presence (LGE_Presence_Isch)
+  LGE_ratio = paste(Table_events[2,2], Table_events[2,2] + Table_events[1,2] ,sep="/")   # Calculate the ratio of LGE presence and events (outcome_death) to the total events in each category
+  noLGE_ratio = paste(Table_events[2,1], Table_events[2,1] + Table_events[1,1] ,sep="/") # Same
+  output <- data.frame(                       study = study_name,
+    mean = HR,
+                       lower = CI_lower,
+                       upper = CI_higher,
+                       LGE = LGE_ratio,
+                       no_LGE = noLGE_ratio,
+                       OR = paste(round(HR,2)," (",round(CI_lower,2),";",round(CI_higher,2),")", sep=""),
+                       Pval = ifelse(Pval<0.001, "<0.001", as.character(round(Pval, 4))),
+                       PValInter = "", 
+                       stringsAsFactors = FALSE) # export a dataframe
+  
+  row.names(output) <- study_name
+  return(output)
+}
+
+forest_function(df_all)
+# Assess the interactions between subgroups
+interaction_function <- function(df,categories) {
+  study_name <- deparse(substitute(categories))
+  PVALINTER <- round(summary(coxph(Surv(time = outcome_FU_time_death/12, event = outcome_death) ~ df[[categories]]*CMR_LGE_ischemic_presence, data=df))$coefficients[3,5],3)
+  output <- data.frame(study = study_name,
+                        mean = NA,
+                       lower = NA,
+                       upper = NA,
+                       LGE = NA,
+                       no_LGE = NA,
+                       OR = NA,
+                       Pval = NA,
+                       PValInter = PVALINTER, 
+                       stringsAsFactors = FALSE)
+
+  return(output)
+}
+
+# Creating the big dataframe with all results needed
+Combined_df <- rbind(
+  interaction_function(df_all, "demo_age"), forest_function(subset(df_all, demo_age < 65)),forest_function(subset(df_all, demo_age >= 65)), 
+  interaction_function(df_all, "demo_gender"), forest_function(subset(df_all, demo_gender == "No")), forest_function(subset(df_all, demo_gender == "Yes")),
+  interaction_function(df_all, "CV_risk_obesity"), forest_function(subset(df_all, CV_risk_obesity == "No")), forest_function(subset(df_all, CV_risk_obesity == "Yes")),
+  interaction_function(df_all, "CV_risk_diabete"), forest_function(subset(df_all, CV_risk_diabete == "No")), forest_function(subset(df_all, CV_risk_diabete == "Yes")),
+  interaction_function(df_all, "CV_risk_HTA"), forest_function(subset(df_all, CV_risk_HTA == "No")), forest_function(subset(df_all, CV_risk_HTA == "Yes")),
+  interaction_function(df_all, "CV_risk_Smoking"), forest_function(subset(df_all, CV_risk_Smoking == "No")), forest_function(subset(df_all, CV_risk_Smoking == "Yes")),
+  interaction_function(df_all, "clini_NYHA"), forest_function(subset(df_all, clini_NYHA =="No")), forest_function(subset(df_all, clini_NYHA == "Yes")),
+  # interaction_function(df_all, "med_CKD"), forest_function(subset(df_all, med_CKD =="No")), forest_function(subset(df_all, med_CKD == "Yes")),
+  interaction_function(df_all, "CMR_LVEF"), forest_function(subset(df_all, CMR_LVEF <= 40)), forest_function(subset(df_all, CMR_LVEF > 40))
+  )
+
+# Assign name of rows for easthetics
+name_row_vector <- c("Age","<65 years", "≥65 years", "Gender","Female", "Male", "Body Mass Index ","No obesity", "Obesity", "Diabete mellitus", "No", "Yes", "Hypertension", "No", "Yes", "Smoking", "No", "Yes", "Symptoms", "Asymptomatic","Symptomatic", "LVEF","≤40%", ">40%")
+
+# Creating a new dataframe that fits with the forest plot function
+base_data <- data.frame(study = c(NA, "Study", name_row_vector), # utilisé Combined_df$study pour s'assurer du match des valeurs
+                            noLGE = c("Death", "No LGE", Combined_df$no_LGE),
+                            LGE = c("Death", "LGE", Combined_df$LGE),
+                            OR = c(NA, "OR", Combined_df$OR),
+                            PVal = c(NA, "P value", Combined_df$Pval),
+                            PValInter = c(NA, "p val i", Combined_df$PValInter),
+                            mean = c(NA, NA, Combined_df$mean),
+                            lower = c(NA, NA, Combined_df$lower),
+                            upper = c(NA, NA, Combined_df$upper))
+
+
+
+# Generate the forestplot
+forest_plot <- base_data |>
+  forestplot(
+    labeltext = c(study, noLGE, LGE, OR, PVal, PValInter), 
+             is.summary = c(rep(TRUE, 2), rep(c(TRUE, FALSE, FALSE), 8)), #Make Text Bold to highlight Summary rows
+             hrzl_lines = list("1" = gpar(lty = 1),
+                               "3" = gpar(lty = 1)),
+             boxsize = 0.2,  # Adjust the boxsize as needed) 
+             clip = c(0, 7),  #Lower and upper limits for clipping confidence intervals to arrows
+             align = c("r", "c", "c", "r","l", "l"), # make it work 
+             vertices = TRUE,
+             xlog = FALSE,  #Log scale on X axis 
+             col = fpColors(box = "royalblue",
+                            line = "darkblue",
+                            summary = "royalblue")) |> 
+  fp_decorate_graph(graph.pos = 4) |> 
+  fp_set_zebra_style("#EFEFEF", ignore_subheaders = FALSE)|> 
+  fp_set_style(box = "red",
+               line = "gray0",
+               summary = "royalblue",
+               align = "lrrr")
+```
+
+## Spline curves
+Encore des bug car HR de lui-même devrait être de 1 non ?
+Ref = 3
+```{r Spline_curves_LGE_extent}
+# Data
+df_selected <- df_all
+
+fit.cox = coxph(Surv(outcome_FU_time_death/12,outcome_death) ~ pspline(CMR_LGE_ischemic_extent_count), data = df_selected) # used median for 1 ...
+
+## get predicted values for fitted spline
+predicted = predict(fit.cox , type = "terms" , se.fit = TRUE , terms = 1, reference = "strata")
+
+# zero
+# predicted = predict(fit.cox , type = "terms" , se.fit = TRUE , terms = 1,
+#                     reference = "zero")
+
+
+df_test <- data.frame(
+  LGE_count = df_selected$CMR_LGE_ischemic_extent_count,
+  HR = exp(predicted$fit),
+  Upper_CI = exp(predicted$fit + 2.81 * predicted$se),
+  Lower_CI = exp(predicted$fit - 2.81 * predicted$se)
+  )
+
+colnames(df_test) <- c("LGE_count","HR","Upper_CI","Lower_CI")
+
+df_test <- as.data.frame(df_test)
+
+
+# Plot using ggplot2
+library(ggplot2)
+gggraph <- ggplot(aes(x = LGE_count, y = HR), data=df_test) +
+  geom_abline(slope = 0, intercept = 1, color = "black") +
+  geom_vline(xintercept = 3, linetype = "dashed", size = 0.5, color = "black")+
+  geom_smooth(method = "loess",color = "red", size = 0.7) +
+  geom_ribbon(aes(ymin = predict(loess(Upper_CI ~ LGE_count, data = df_test)), 
+                  ymax = predict(loess(Lower_CI ~ LGE_count, data = df_test))),
+              fill = "orangered", alpha = 0.3) +
+  
+  labs(
+    title = "Fig2B bis - LGE Extent and Outcome",
+    x = "Number of ischemic LGE segments",
+    y = expression("Hazard Ratio for all-cause mortality n\ vs 3 segments of LGE (99.5% CI)")) +
+
+  xlim(0, 8) +
+  ylim(0, 40) +
+  
+  scale_y_continuous(breaks = c(1, 5, 10, 30)) +  # Y-axis marks at 1, 5, 10, 30
+  scale_x_continuous(breaks = seq(0, 9, 1)) +  # X-axis marks every 1
+  
+  theme(
+    panel.background = element_rect(fill = "white", color = NA),
+    axis.line = element_line(color = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(size = 16),  # Increase x-axis label font size
+    axis.text.y = element_text(size = 16) 
+  ) 
+gggraph
+
+# Save the plot in a folder 
+ggsave(
+  filename = here("outputs","figures","spline_curve.png"), 
+  plot = gggraph, width = 9, height = 6, units = "in", dpi = 600)
+```

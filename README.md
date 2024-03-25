@@ -1,6 +1,6 @@
 # LGE Granularity in Radiology
 
-Welcome to the `LGE_granularity_Radiology` GitHub repository. This repository hosts a collection of documents and scripts associated with the radiology submission RAD-24-086. Our focus is on providing a comprehensive analysis framework for Late Gadolinium Enhancement (LGE) granularity in cardiac magnetic resonance imaging data, with a particular emphasis on its implications in radiology.
+Welcome to the `LGE_granularity_Radiology` GitHub repository. This repository hosts a collection of documents and scripts associated with the radiology submission RAD-24-086.
 
 ## Repository Contents
 

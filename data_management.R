@@ -10,7 +10,7 @@ library(here)     # For manipulation of path
 
 # ------- IMPORT DATA ----
 # Import the initial dataframe without any modification (Not provided for this github link)
-df_all <- as.data.frame(read_excel(paste(here("ICM","data","rawdata_donotmodify","code_book_tabular.xlsx"), sep="")))
+df_all <- as.data.frame(read_excel(here("ICM","data","rawdata_donotmodify","code_book_tabular.xlsx")))
 
 # ------- OPERATION ON DATA -------
 # Assign variable name using code book in excel 

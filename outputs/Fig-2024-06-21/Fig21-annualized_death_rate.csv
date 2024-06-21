@@ -1,0 +1,14 @@
+"","subgroups","pyears","n","event","group","annual_rates"
+"1","B_Ext~B_1_2_segments",12538.578599133,1392,23,"B_Ext",0.2
+"2","B_Ext~C_3_5_segments",17452.5462012321,1953,294,"B_Ext",1.7
+"3","B_Ext~D_more6_segments",1844.23682409309,246,232,"B_Ext",12.6
+"4","C_Transm~B_Subendocardial<50%",15267.7926078029,1698,79,"C_Transm",0.5
+"5","C_Transm~C_Subendocardial≥50%",13756.99406799,1549,259,"C_Transm",1.9
+"6","C_Transm~D_Transmural",2810.5749486653,344,211,"C_Transm",7.5
+"7","D_Multiple~NA",28906.6176135067,3226,319,"D_Multiple",1.1
+"8","D_Multiple~NA",2928.7440109514,365,230,"D_Multiple",7.9
+"9","E_localization~NA",24220.4106776181,2662,99,"E_localization",0.4
+"10","E_localization~NA",3632.17887291809,422,105,"E_localization",2.9
+"11","E_localization~NA",3982.77207392197,507,345,"E_localization",8.7
+"12","F_Midwall~NA",28911.3643623089,3237,418,"F_Midwall",1.4
+"13","F_Midwall~NA",2923.99726214921,354,131,"F_Midwall",4.5

@@ -1,0 +1,7 @@
+"","Coefficients_CI","HR_CI","p_value","coefficients","coeff_x3","score"
+"CMR_LGE_ischemic_extent_count","0.32 ( 0.25 - 0.39 )","1.38 ( 1.28 - 1.48 )","<0.001",0.32,0.96,1
+"CMR_LGE_ischemic_transmuralityC_Subendocardial≥50%","0.82 ( 0.45 - 1.19 )","2.28 ( 1.58 - 3.28 )","<0.001",0.82,2.46,2
+"CMR_LGE_ischemic_transmuralityD_Transmural","1.15 ( 0.75 - 1.55 )","3.16 ( 2.12 - 4.73 )","<0.001",1.15,3.45,3
+"CMR_LGE_ischemic_location_4C_Anterior_without_septal","1.60 ( 1.20 - 2.00 )","4.95 ( 3.31 - 7.41 )","<0.001",1.6,4.8,5
+"CMR_LGE_ischemic_location_4D_Septal","2.06 ( 1.70 - 2.43 )","7.87 ( 5.45 - 11.35 )","<0.001",2.06,6.18,6
+"CMR_LGE_midwall_presenceB_Presence_of_midwall_LGE","0.63 ( 0.35 - 0.92 )","1.88 ( 1.41 - 2.51 )","<0.001",0.63,1.89,2

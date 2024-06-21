@@ -1,6 +1,6 @@
 # LGE Granularity in Radiology
 
-Welcome to the `LGE_granularity_Radiology` GitHub repository. This repository hosts a collection of documents and scripts associated with the radiology submission RAD-24-086.
+Welcome to the `LGE_granularity_Radiology` GitHub repository. This repository hosts a collection of documents and scripts associated with the radiology submission RAD-24-086 + RAD-24-0806.R1 (Major revisions)
 
 ## Repository Contents
 
@@ -17,7 +17,7 @@ Below is a brief overview of the contents provided in this repository:
   - Recoding and categorization of numerous variables related to patients' clinical and diagnostic data.
   - Special focus on CMR_LGE related variables for ischemic and midwall findings.
 
-- `main_script.Rmd`: An R Markdown document containing all the statistical analyses, including the creation of tables and graphics. This script is the core of our analysis workflow, providing detailed insights and visualizations of the LGE granularity study.
+- `main_script.Rmd`: An R Markdown document containing all the statistical analyses, including the creation of tables and graphics. This script is the core of our analysis workflow, providing detailed insights and visualizations of the LGE granularity study. Of note, it has been adapted in mai 2025 following major revisions by radiology. 
 
 ## Note on Data
 

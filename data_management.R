@@ -1,27 +1,30 @@
 # Data management 
-# Use code book CodeBook_ICM_Tradi.pdf to see variable definition. 
+# Use code book in annexe to see variable definition. 
 
-# Load necessary libraries for data manipulation
-library(readr)    # For reading CSV and text files
-library(readxl)   # For reading Excel files
-library(dplyr)    # For data manipulation
-library(tidyr)    # For tidying data
-library(here)     # For manipulation of path
+# Package installation.
+library(readr)
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(here)
 
 # ------- IMPORT DATA ----
-# Import the initial dataframe without any modification (Not provided for this github link)
-df_all <- as.data.frame(read_excel(here("ICM","data","rawdata_donotmodify","code_book_tabular.xlsx")))
+
+folder <- "/Users/alexandreunger/Documents/PROJECTS/ICM/ICM_tradi/RProject_ICM_tradi/data"
+df_all <- as.data.frame(read_excel(here(folder,"rawdata_donotmodify/ICM_data.xlsx")))
 
 # ------- OPERATION ON DATA -------
-# Assign variable name using code book in excel 
-code_book <- as.data.frame(read_excel(here("data","ICM_code_book_tabl.xlsx"))) 
+# Assign variable name using code book in excell 
+code_book <- as.data.frame(read_excel(here(folder,"ICM_code_book_tabl.xlsx")))
 
 code_book <- code_book %>% 
   select(Variable_dataset, status, name_given) # our code_book with new variable name
 
-# remove new variable
-subset_code_book <- code_book[code_book$status!=2,] 
-df_all <- df_all[,subset_code_book$Variable_dataset] 
+code_book$Variable_dataset == colnames(df_all)
+
+# # remove new variable
+# subset_code_book <- code_book[code_book$status!=1,]
+df_all <- df_all[,code_book$Variable_dataset] 
 
 # assign new name
 colnames(df_all) <- code_book[1:ncol(df_all),"name_given"]
@@ -31,12 +34,6 @@ df_all <- df_all[, -which(colnames(df_all) %in%
                             names(df_all)[colSums(!is.na(df_all)) == 0])]
 
 # ------- Readjusting levels of variables -------
-# Further recodings and categorizations for various clinical and demographic variables
-# Including adjustments for cardiovascular risks, clinical assessments, and medical history
-# Notable transformations include categorizing CMR (Cardiac Magnetic Resonance) findings
-# Specifically LGE (Late Gadolinium Enhancement) indicators and extents
-# Recode and categorize numerous variables related to patient's clinical and diagnostic data
-# Additional transformations involve CMR_LGE related variables for ischemic and midwall findings
 
 df_all <- df_all %>% mutate(
   demo_center = case_when(
@@ -107,10 +104,6 @@ df_all<- df_all %>%
                  "ischemic_and_midwall_LGE_presence")
     ),
     
-    ##########################################
-    ############### ISCHEMIC #################
-    ##########################################
-    
     # Categorize the extent of ischemic CMR LGE based on count
     CMR_LGE_ischemic_extent_categ = case_when(
       CMR_LGE_ischemic_extent_count == 0 ~ 0,
@@ -136,6 +129,14 @@ df_all<- df_all %>%
       TRUE ~ NA_real_
     ),
     
+    CMR_LGE_ischemic_extent_categ_optimal = factor(
+      CMR_LGE_ischemic_extent_categ_optimal,
+      levels = c(0, 1, 2, 3),
+      labels = c("No_ischemic_LGE ", "Low_extent_(opt)", 
+                 "Moderate_extent_(opt)", "High_extent_(opt)")
+    ),
+    
+    
     # Categorize the extent of midwall CMR LGE based on count
     CMR_LGE_midwall_extent_categ = case_when(
       CMR_LGE_midwall_extent_count == 0 ~ 0,
@@ -149,8 +150,7 @@ df_all<- df_all %>%
       levels = c(0, 1, 2),
       labels = c("None", "Low_=1", "High_>1")
     ),
-    
-    # Create the exclusive ischemic-LGE categories
+
     CMR_LGE_ischemic_location_6 = case_when(
       CMR_LGE_ischemic_anterior == 0 & CMR_LGE_ischemic_septal == 0 &
         CMR_LGE_ischemic_inferior == 0 & CMR_LGE_ischemic_lateral == 0 &
@@ -180,8 +180,7 @@ df_all<- df_all %>%
                  "Septal", "Several_localization")
     ),
     
-    # Create the exclusive ishcemic-LGE location based on the involvement 
-    # of anterior or septal
+    
     CMR_LGE_ischemic_location_4 = case_when(
       CMR_LGE_ischemic_presence == 0 ~ 0,
       
@@ -198,16 +197,11 @@ df_all<- df_all %>%
     CMR_LGE_ischemic_location_4 = factor(
       CMR_LGE_ischemic_location_4,
       levels = c(0, 1, 2, 3),
-      labels = c(
-        "A_No_ischemic_LGE", 
-        "B_Neither_anterior_nor_septal", 
-        "C_Anterior_without_septal", "D_Septal")
+      labels = c("A_No_ischemic_LGE", "B_Neither_anterior_nor_septal", "C_Anterior_without_septal", "D_Septal")
     ),
   
-    ##########################################
-    ##############  MIDWALL ##################
-    ##########################################
     
+    #### MIDWALL
     CMR_LGE_midwall_location_6 = case_when(
       CMR_LGE_midwall_anterior == 0 & CMR_LGE_midwall_septal == 0 &
         CMR_LGE_midwall_inferior == 0 & CMR_LGE_midwall_lateral == 0 &
@@ -296,7 +290,21 @@ df_all<- df_all %>%
       CMR_LGE_ischemic_multiple,
       levels = c(0, 1, 2),
       labels = c("No_ischemic_LGE", "Focal_LGE", "Multiple")
+    ),
+    #### SCORE - MODIFIED TO CORRECT 
+    score = CMR_LGE_ischemic_extent_count * 1 +
+      ifelse(CMR_LGE_midwall_presence == "B_Presence_of_midwall_LGE", 2, 0) +
+      ifelse(CMR_LGE_ischemic_transmurality == "C_Subendocardial≥50%", 2, 0) +
+      ifelse(CMR_LGE_ischemic_transmurality == "D_Transmural≥50%", 3, 0) +
+      ifelse(CMR_LGE_ischemic_location_4 == "C_Anterior_without_septal", 5, 0) +
+      ifelse(CMR_LGE_ischemic_location_4 == "D_Septal", 6, 0),
+    
+    score_categ = case_when(
+      score < 8 ~ "1_low_risk",
+      score > 10 ~ "3_high_risk",
+      TRUE ~ "2_medium_risk"
     )
+    
     )
 
 # ---- REMOVING VALUES AND CONVERTING TO FACTORS
@@ -335,17 +343,53 @@ columns_to_convert <- c("demo_gender",
                         "CMR_LGE_midwall_apical"
                         ) 
 
+
 df_all <- df_all %>% 
   mutate(
-    across(all_of(columns_to_convert), ~ factor(.,levels = c(0, 1), labels = c("No", "Yes")))) 
+    across(all_of(columns_to_convert), ~ factor(.,levels = c(0, 1), labels = c("No", "Yes"))),
+    outcome_MACE = as.numeric(outcome_MACE),
+    outcome_FU_time_MACE = as.numeric(outcome_FU_time_MACE),
+    outcome_MACE_CV_death = as.numeric(outcome_MACE_CV_death),
+    outcome_MACE_NonFatal_MI = as.numeric(outcome_MACE_NonFatal_MI)
+    ) 
 
-# ------- FINAL OPERATION ON DATA ------- 
-# creating df_all_LGE : only selecting patient with ischemic LGE
-df_LGE <- df_all %>%
-  filter(
-    CMR_LGE_ischemic_presence == "Presence_of_ischemic_LGE") %>%
-  droplevels()
 
-# save modifications 
-save(df_all, file = "df_all.RData")
-save(df_LGE, file = "df_LGE.RData")
+### dealing with the MACE variables
+df_all <- df_all %>%
+  mutate(
+    time.censored = case_when(
+      (outcome_FU_time_MACE <= outcome_FU_time_death) & !is.na(outcome_FU_time_MACE) ~ outcome_FU_time_MACE,
+      TRUE ~ outcome_FU_time_death
+    )
+  )
+
+D <- df_all %>% mutate(dead_before_MACE = ifelse(outcome_FU_time_MACE <= outcome_FU_time_death, 1, 0)) %>% select(outcome_death, outcome_FU_time_death, outcome_MACE, outcome_FU_time_MACE, dead_before_MACE, time.censored)
+
+table(D$dead_before_MACE) # 20 only will be censored because of dead before MACE. (20 non cardiac - all-cause mortality)
+D%>%filter(dead_before_MACE ==0)
+
+
+
+#### OUTPUT VARIABLE :df_all, df_LGE, df_MACE_all
+
+#### df_all
+save(df_all, file = here("data","df_all.RData"))
+#### df_LGE
+df_LGE <- df_all %>% filter(CMR_LGE_ischemic_presence == "Presence_of_ischemic_LGE")
+save(df_LGE, file = here("data","df_LGE.RData"))
+#### df_MACE_all
+df_MACE <- df_all %>% filter(!is.na(outcome_MACE))
+save(df_MACE, file = here("data","df_MACE.RData"))
+
+
+
+# df_derivation<- df_LGE %>% filter(
+#   demo_center == "ICPS") %>% 
+#   droplevels() 
+# 
+# df_validation <- df_LGE %>% 
+#   filter(
+#     demo_center == "Lariboisiere") %>% 
+#   droplevels()
+# 
+
